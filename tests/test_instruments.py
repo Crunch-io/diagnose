@@ -4,8 +4,8 @@ import sys
 
 from mock import call, patch
 
-import probes
-from probes.test_fixtures import a_func, Thing
+import diagnose
+from diagnose.test_fixtures import a_func, Thing
 
 from . import ProbeTestCase
 
@@ -15,8 +15,10 @@ registry = {}
 
 class TestLogInstrument(ProbeTestCase):
     def test_log_instrument(self):
-        with patch("probes.instruments.LogInstrument.out", StringIO()) as out:
-            with self.probe("log", "foo", "probes.test_fixtures.Thing.do", "len(arg)"):
+        with patch("diagnose.instruments.LogInstrument.out", StringIO()) as out:
+            with self.probe(
+                "log", "foo", "diagnose.test_fixtures.Thing.do", "len(arg)"
+            ):
                 result = Thing().do("ok")
 
             # The call MUST succeed.
@@ -28,11 +30,11 @@ class TestLogInstrument(ProbeTestCase):
     def test_log_instrument_err_in_eval(self):
         errs = []
         with patch(
-            "probes.manager.handle_error",
+            "diagnose.manager.handle_error",
             lambda probe, instrument=None: errs.append(sys.exc_info()[1]),
         ):
             with self.probe(
-                "log", "bar", "probes.test_fixtures.Thing.do", "::len(arg)"
+                "log", "bar", "diagnose.test_fixtures.Thing.do", "::len(arg)"
             ):
                 result = Thing().do("ok")
 
@@ -47,8 +49,10 @@ class TestLogInstrument(ProbeTestCase):
 
 class TestHistInstrument(ProbeTestCase):
     def test_hist_instrument(self):
-        with patch("probes.instruments.statsd") as statsd:
-            with self.probe("hist", "foo", "probes.test_fixtures.Thing.do", "len(arg)"):
+        with patch("diagnose.instruments.statsd") as statsd:
+            with self.probe(
+                "hist", "foo", "diagnose.test_fixtures.Thing.do", "len(arg)"
+            ):
                 result = Thing().do("ok")
 
             # The call MUST succeed.
@@ -60,11 +64,11 @@ class TestHistInstrument(ProbeTestCase):
     def test_hist_instrument_err_in_eval(self):
         errs = []
         with patch(
-            "probes.manager.handle_error",
+            "diagnose.manager.handle_error",
             lambda probe, instrument=None: errs.append(sys.exc_info()[1]),
         ):
             with self.probe(
-                "hist", "bar", "probes.test_fixtures.Thing.do", "::len(arg)"
+                "hist", "bar", "diagnose.test_fixtures.Thing.do", "::len(arg)"
             ):
                 result = Thing().do("ok")
 
@@ -76,11 +80,11 @@ class TestHistInstrument(ProbeTestCase):
 
     def test_hist_tags(self):
         NUM = 496942560
-        with patch("probes.instruments.statsd") as statsd:
+        with patch("diagnose.instruments.statsd") as statsd:
             with self.probe(
                 "hist",
                 "bar",
-                "probes.test_fixtures.a_func",
+                "diagnose.test_fixtures.a_func",
                 "result",
                 custom={"tags": "{'output': arg}"},
             ):
@@ -94,9 +98,9 @@ class TestHistInstrument(ProbeTestCase):
 
 class TestIncrInstrument(ProbeTestCase):
     def test_incr_instrument(self):
-        with patch("probes.instruments.statsd") as statsd:
+        with patch("diagnose.instruments.statsd") as statsd:
             with self.probe(
-                "incr", "klee", "probes.test_fixtures.Thing.do", "len(arg)"
+                "incr", "klee", "diagnose.test_fixtures.Thing.do", "len(arg)"
             ):
                 result = Thing().do("ok")
 
@@ -109,11 +113,13 @@ class TestIncrInstrument(ProbeTestCase):
     def test_incr_nonnumeric(self):
         errs = []
         with patch(
-            "probes.manager.handle_error",
+            "diagnose.manager.handle_error",
             lambda probe, instrument=None: errs.append(sys.exc_info()[1]),
         ):
-            with patch("probes.instruments.statsd"):
-                with self.probe("incr", "klee", "probes.test_fixtures.Thing.do", "arg"):
+            with patch("diagnose.instruments.statsd"):
+                with self.probe(
+                    "incr", "klee", "diagnose.test_fixtures.Thing.do", "arg"
+                ):
                     result = Thing().do("ok")
 
                 # The call MUST succeed.
@@ -125,10 +131,10 @@ class TestIncrInstrument(ProbeTestCase):
 
 class TestMultipleInstruments(ProbeTestCase):
     def test_multiple_instruments(self):
-        with patch("probes.instruments.statsd") as statsd:
-            mgr = probes.manager
+        with patch("diagnose.instruments.statsd") as statsd:
+            mgr = diagnose.manager
             try:
-                target = "probes.test_fixtures.a_func"
+                target = "diagnose.test_fixtures.a_func"
                 mgr.specs["a_func_internal"] = {
                     "target": target,
                     "instrument": {
@@ -172,10 +178,10 @@ class TestMultipleInstruments(ProbeTestCase):
             ]
 
     def test_replace_instrument(self):
-        with patch("probes.instruments.statsd") as statsd:
-            mgr = probes.manager
+        with patch("diagnose.instruments.statsd") as statsd:
+            mgr = diagnose.manager
             try:
-                target = "probes.test_fixtures.a_func"
+                target = "diagnose.test_fixtures.a_func"
                 mgr.specs["a_func"] = spec = {
                     "target": target,
                     "instrument": {
@@ -200,9 +206,9 @@ class TestMultipleInstruments(ProbeTestCase):
                 assert statsd.method_calls == [call.histogram("a_func", 100, tags=[])]
 
                 # Change the probe to a different target
-                spec["target"] = "probes.test_fixtures.Thing.do"
+                spec["target"] = "diagnose.test_fixtures.Thing.do"
                 mgr.apply()
-                _id = mgr.target_map["probes.test_fixtures.Thing.do"]
+                _id = mgr.target_map["diagnose.test_fixtures.Thing.do"]
                 assert mgr.probes[_id].instruments.values()[0].name == "a_func"
                 # The old target MUST be removed from the probes
                 assert target not in mgr.probes

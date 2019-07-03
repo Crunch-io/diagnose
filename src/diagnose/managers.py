@@ -9,7 +9,7 @@ import time
 import traceback
 
 from . import instruments
-from .probelib import FunctionProbe
+from .probes import FunctionProbe
 
 
 def mag(obj, base=10):

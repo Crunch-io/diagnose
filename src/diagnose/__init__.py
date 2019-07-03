@@ -2,7 +2,7 @@
 
 from .managers import ProbeManager
 from . import instruments
-from .probelib import FunctionProbe
+from .probes import FunctionProbe
 
 # A global since it should be one per process.
 # You _may_ make another, but most people will just want the one.

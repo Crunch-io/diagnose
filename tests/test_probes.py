@@ -6,10 +6,17 @@ import types
 
 from mock import _patch as MockPatch, patch
 
-import probes
-from probes import probelib
-from probes.instruments import ProbeTestInstrument
-from probes.test_fixtures import a_func, hard_work, Thing, to_columns, funcs, mult_by_8
+import diagnose
+from diagnose import probes
+from diagnose.instruments import ProbeTestInstrument
+from diagnose.test_fixtures import (
+    a_func,
+    hard_work,
+    Thing,
+    to_columns,
+    funcs,
+    mult_by_8,
+)
 
 from . import ProbeTestCase
 
@@ -20,7 +27,7 @@ registry = {}
 class TestExternalProbe(ProbeTestCase):
     def test_external_probe_result(self):
         with self.probe(
-            "test", "do", "probes.test_fixtures.Thing.do", "result", internal=False
+            "test", "do", "diagnose.test_fixtures.Thing.do", "result", internal=False
         ) as p:
             result = Thing().do("ok")
 
@@ -31,7 +38,7 @@ class TestExternalProbe(ProbeTestCase):
 
     def test_external_probe_elapsed(self):
         with self.probe(
-            "test", "do", "probes.test_fixtures.Thing.do", "elapsed", internal=False
+            "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed", internal=False
         ) as p:
             start = time.time()
             result = Thing().do("ok")
@@ -46,7 +53,7 @@ class TestExternalProbe(ProbeTestCase):
         with self.probe(
             "test",
             "do",
-            "probes.test_fixtures.Thing.do",
+            "diagnose.test_fixtures.Thing.do",
             "sorted(locals().keys())",
             internal=False,
         ) as p:
@@ -74,7 +81,7 @@ class TestExternalProbe(ProbeTestCase):
             ]
 
     def test_external_caller(self):
-        probe = probes.FunctionProbe("probes.test_fixtures.a_func")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = ProbeTestInstrument(
@@ -91,16 +98,16 @@ class TestExternalProbe(ProbeTestCase):
 
     def test_probe_bad_mock(self):
         with self.assertRaises(AttributeError) as exc:
-            probes.FunctionProbe("probes.test_fixtures.Thing.notamethod")
+            probes.FunctionProbe("diagnose.test_fixtures.Thing.notamethod")
         assert (
             exc.exception.message
-            == "probes.test_fixtures.Thing does not have the attribute 'notamethod'"
+            == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
         )
 
 
 class TestInternalProbe(ProbeTestCase):
     def test_internal_instrument(self):
-        probe = probes.FunctionProbe("probes.test_fixtures.a_func")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -116,7 +123,7 @@ class TestInternalProbe(ProbeTestCase):
             probe.stop()
 
     def test_internal_exception_in_target(self):
-        probe = probes.FunctionProbe("probes.test_fixtures.a_func")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -133,7 +140,7 @@ class TestInternalProbe(ProbeTestCase):
             probe.stop()
 
     def test_internal_exception_in_value(self):
-        probe = probes.FunctionProbe("probes.test_fixtures.a_func")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -152,7 +159,7 @@ class TestInternalProbe(ProbeTestCase):
 
 class TestHotspotValues(ProbeTestCase):
     def test_slowest_line(self):
-        probe = probes.FunctionProbe("probes.test_fixtures.hard_work")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.hard_work")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -181,7 +188,7 @@ class TestHotspotValues(ProbeTestCase):
         to_columns(val)
         unpatched = time.time() - start
 
-        probe = probes.FunctionProbe("probes.test_fixtures.to_columns")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.to_columns")
         try:
             probe.start()
             probe.instruments["instrument1"] = ProbeTestInstrument(
@@ -240,7 +247,7 @@ class TestTargetCopies(ProbeTestCase):
         registry["in_a_dict"] = a_func
         self.assertTrue(registry["in_a_dict"] is old_local_a_func)
 
-        probe = probes.FunctionProbe("probes.test_fixtures.a_func")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -281,9 +288,9 @@ class TestTargetCopies(ProbeTestCase):
                     types.ModuleType: 3,
                     Entity: 2,
                     dict: 2,  # why?
-                    probelib.WeakMethodPatch: 4,
+                    probes.WeakMethodPatch: 4,
                     MockPatch: 1,
-                    probelib.DictPatch: 1,
+                    probes.DictPatch: 1,
                 },
             )
             del t2
@@ -295,9 +302,9 @@ class TestTargetCopies(ProbeTestCase):
                     Entity: 1,
                     dict: 2,
                     # The number of WeakMethodPatch references MUST decrease by 1.
-                    probelib.WeakMethodPatch: 3,
+                    probes.WeakMethodPatch: 3,
                     MockPatch: 1,
-                    probelib.DictPatch: 1,
+                    probes.DictPatch: 1,
                 },
             )
         finally:
@@ -314,7 +321,7 @@ class TestTargetCopies(ProbeTestCase):
         assert i.results == [([], 44), ([], 99999), ([], 1001), ([], 777)]
 
     def test_function_registries(self):
-        with self.probe("test", "orig", "probes.test_fixtures.orig", "result") as p:
+        with self.probe("test", "orig", "diagnose.test_fixtures.orig", "result") as p:
             assert funcs["orig"]("ahem") == "aha!"
 
             # The probe MUST have logged an entry
@@ -332,7 +339,7 @@ class TestTargetCopies(ProbeTestCase):
         # We REALLY should not be allowed to patch anything
         # that's not a function!
         with self.assertRaises(TypeError):
-            probes.FunctionProbe("probes.test_fixtures.Thing")
+            probes.FunctionProbe("diagnose.test_fixtures.Thing")
 
 
 class TestProbeCheckCall(ProbeTestCase):
@@ -341,11 +348,11 @@ class TestProbeCheckCall(ProbeTestCase):
             valid_ids = instrument.custom.get("valid_ids", None)
             return kwargs.get("user_id") in valid_ids
 
-        with patch("probes.manager.check_call", only_some_users):
+        with patch("diagnose.manager.check_call", only_some_users):
             with self.probe(
                 "test",
                 "blurg",
-                "probes.test_fixtures.Thing.do",
+                "diagnose.test_fixtures.Thing.do",
                 "result",
                 custom={"valid_ids": [1, 2, 3]},
             ) as p:
@@ -361,7 +368,7 @@ class TestProbePatching(ProbeTestCase):
         with self.probe(
             "test",
             "quantile",
-            "probes.test_fixtures.Thing.static",
+            "diagnose.test_fixtures.Thing.static",
             "result",
             internal=False,
         ) as p:
@@ -369,7 +376,7 @@ class TestProbePatching(ProbeTestCase):
             assert p.instruments.values()[0].results == [([], 15)]
 
     def test_patch_wrapped_function_internal(self):
-        probe = probes.FunctionProbe("probes.test_fixtures.Thing.add5")
+        probe = probes.FunctionProbe("diagnose.test_fixtures.Thing.add5")
         try:
             probe.start()
             instr = ProbeTestInstrument("deco", "arg1", internal=True)
@@ -382,8 +389,8 @@ class TestProbePatching(ProbeTestCase):
 
 class TestHardcodedProbes(ProbeTestCase):
     def test_hardcoded_probes(self):
-        probes.manager.apply()
+        diagnose.manager.apply()
         assert mult_by_8(3) == 24
         assert [
-            p.instruments.values()[0].results for p in probes.manager.probes.values()
+            p.instruments.values()[0].results for p in diagnose.manager.probes.values()
         ] == [[([], 24)]]

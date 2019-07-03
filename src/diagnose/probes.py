@@ -14,7 +14,7 @@ import weakref
 import hunter
 import mock
 
-import probes
+import diagnose
 
 
 omitted = object()
@@ -43,7 +43,7 @@ class FunctionProbe(object):
             instruments = {}
         self.instruments = instruments
         if mgr is None:
-            mgr = probes.manager
+            mgr = diagnose.manager
         self.mgr = mgr
         self.make_patches()
 

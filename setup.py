@@ -4,7 +4,7 @@ ext_modules = []
 
 
 setup(
-    name="probes",
+    name="diagnose",
     version="1.0.0",
     author="Robert Brewer",
     author_email="dev@crunch.io",

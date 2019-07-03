@@ -1,6 +1,6 @@
 import functools
 
-import probes
+import diagnose
 
 
 def wrap(f):
@@ -64,6 +64,6 @@ def orig(term):
 funcs = {"orig": orig}
 
 
-@probes.manager.hardcode("test", "mult_by_8", "result")
+@diagnose.manager.hardcode("test", "mult_by_8", "result")
 def mult_by_8(arg):
     return arg * 8

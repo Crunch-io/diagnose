@@ -1,4 +1,4 @@
-# Probes
+# Diagnose
 
 A library for instrumenting Python code at runtime.
 
@@ -22,8 +22,8 @@ Individual probes can be created directly with the FunctionProbe class:
 >>> from path.to.module import myclass
 >>> myclass().add13(arg=5)
 18
->>> p = probes.FunctionProbe("path.to.module.myclass.add13")
->>> p.instruments["foo"] = probes.LogInstrument("foo", "arg", internal=False)
+>>> p = diagnose.FunctionProbe("path.to.module.myclass.add13")
+>>> p.instruments["foo"] = diagnose.LogInstrument("foo", "arg", internal=False)
 >>> p.start()
 >>> myclass().add13(arg=5)
 Probe (foo) = 5
@@ -35,21 +35,21 @@ Managers
 
 In a running system, we want to add, remove, start, and stop probes without
 having to code at an interactive prompt or restart the system; we do this
-with a ProbeManager. Start by configuring the global probes.manager:
+with a ProbeManager. Start by configuring the global diagnose.manager:
 
 ```#python
->>> probes.manager.instrument_classes = {
+>>> diagnose.manager.instrument_classes = {
     "log": LogInstrument,
     "hist": MyHistogramInstrument,
     "incr": MyIncrementInstrument,
 }
->>> probes.manager.global_namespace.update({"foo": foo})
+>>> diagnose.manager.global_namespace.update({"foo": foo})
 ```
 
 Later, you can define probes:
 
 ```#python
->>> probes.manager.specs["probe-1"] = {
+>>> diagnose.manager.specs["probe-1"] = {
     "target": "myapp.module.file.class.method",
     "instrument": {
         "type": "log",
@@ -64,7 +64,7 @@ Later, you can define probes:
 }
 ```
 
-Then call `probes.manager.apply()`, either when you add a probe, or on a
+Then call `diagnose.manager.apply()`, either when you add a probe, or on a
 schedule if your store is in MongoDB and the process defining probes is not
 the target process.
 
