@@ -110,7 +110,7 @@ class ProbeManager(object):
         ):
             target = doc["target"]
             seen_instruments[id] = target
-            I = None
+            probe, I, cls, expires = None, None, None, None
             try:
                 probe = self.probes.get(self.target_map.get(target, None), None)
                 if probe is None:
@@ -144,8 +144,11 @@ class ProbeManager(object):
                 if modified:
                     self.mark(id, doc)
             except:
-                # TODO: fake an instrument from doc if needed
-                self.handle_error(target, I)
+                if I is None:
+                    if cls is None:
+                        cls = self.instrument_classes[doc["instrument"]["type"]]
+                    I = cls(expires=expires, **doc["instrument"])
+                self.handle_error(probe, I)
                 self.mark(id, doc, exception=True)
 
         # Remove defunct instruments, probes
@@ -177,7 +180,7 @@ class ProbeManager(object):
                 self.apply()
                 # log.info("Probe Manager applied")
             except:
-                self.handle_error("Probe Manager exception")
+                self.handle_error()
 
     def check_call(self, probe, instrument, *args, **kwargs):
         """Return True if the given instrument should be applied, False otherwise.
@@ -191,7 +194,7 @@ class ProbeManager(object):
     def get_tags(self):
         return []
 
-    def handle_error(self, probe, instrument=None):
+    def handle_error(self, probe=None, instrument=None):
         """Handle any error raised by an instrument.
 
         By default, this prints the error.
@@ -222,7 +225,12 @@ class MongoDBProbeManager(ProbeManager):
     """
 
     def __init__(self, process_id, collection, id_field="id"):
+        self.probes = {}
+        self.target_map = {}
+        self.hardcoded_specs = {}
         self.process_id = process_id
+        self.apply_thread = None
+        self.period = 60
         self.collection = collection
         self.id_field = id_field
 

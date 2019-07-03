@@ -201,7 +201,7 @@ class FunctionProbe(object):
                         except:
                             try:
                                 instrument.expire_due_to_error()
-                                self.mgr.handle_error(self.target, instrument)
+                                self.mgr.handle_error(self, instrument)
                             except:
                                 traceback.print_exc()
                 return result
