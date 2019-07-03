@@ -2,6 +2,8 @@
 
 A library for instrumenting Python code at runtime.
 
+## Probes
+
 Structured logs and metrics and observability are great, but almost always
 require you to alter your code, which interrupts the flow when reading code.
 It also typically requires a build cycle to alter; it's no fun making a ticket,
@@ -30,8 +32,7 @@ Probe (foo) = 5
 18
 ```
 
-Managers
---------
+## Managers
 
 In a running system, we want to add, remove, start, and stop probes without
 having to code at an interactive prompt or restart the system; we do this
