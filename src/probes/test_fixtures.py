@@ -1,5 +1,7 @@
 import functools
 
+import probes
+
 
 def wrap(f):
     class Other(object):
@@ -60,3 +62,8 @@ def orig(term):
 
 
 funcs = {"orig": orig}
+
+
+@probes.manager.hardcode("test", "mult_by_8", "result")
+def mult_by_8(arg):
+    return arg * 8

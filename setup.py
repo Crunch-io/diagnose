@@ -5,7 +5,7 @@ ext_modules = []
 
 setup(
     name="probes",
-    version="1.0",
+    version="1.0.0",
     author="Robert Brewer",
     author_email="dev@crunch.io",
     packages=find_packages(where="src"),

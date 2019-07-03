@@ -9,7 +9,7 @@ from mock import _patch as MockPatch, patch
 import probes
 from probes import probelib
 from probes.instruments import ProbeTestInstrument
-from probes.test_fixtures import a_func, hard_work, Thing, to_columns, funcs
+from probes.test_fixtures import a_func, hard_work, Thing, to_columns, funcs, mult_by_8
 
 from . import ProbeTestCase
 
@@ -166,7 +166,7 @@ class TestHotspotValues(ProbeTestCase):
             )
             assert hard_work(0, 10000) == 1000
             assert [tags for tags, value in i.results] == [
-                ["source:26:    summary = len([x for x in output if x % 10 == 0])\n"]
+                ["source:28:    summary = len([x for x in output if x % 10 == 0])\n"]
             ]
             assert [type(value) for tags, value in i.results] == [float]
         finally:
@@ -378,3 +378,12 @@ class TestProbePatching(ProbeTestCase):
             assert instr.results == [([], 113)]
         finally:
             probe.stop()
+
+
+class TestHardcodedProbes(ProbeTestCase):
+    def test_hardcoded_probes(self):
+        probes.manager.apply()
+        assert mult_by_8(3) == 24
+        assert [
+            p.instruments.values()[0].results for p in probes.manager.probes.values()
+        ] == [[([], 24)]]
