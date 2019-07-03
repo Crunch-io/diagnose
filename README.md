@@ -11,11 +11,10 @@ where you might perform a dozen small experiments to measure your live code.
 
 This library allows you to dynamically add probes at runtime instead.
 Probes are:
-    * reliable: errors will never affect your production code
-    * ephemeral: set a "lifespan" (in minutes), after which point the probe detaches
-    * comprehensive: all references to the target function are instrumented
-    * fast: measure most functions with fast local lookups; uses hunter
-      (in Cython) for more invasive internal probes.
+* reliable: errors will never affect your production code
+* ephemeral: set a "lifespan" (in minutes), after which point the probe detaches
+* comprehensive: all references to the target function are instrumented
+* fast: measure most functions with fast local lookups; uses hunter (in Cython) for more invasive internal probes.
 
 Individual probes can be created directly with the FunctionProbe class:
 

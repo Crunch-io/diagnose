@@ -58,4 +58,5 @@ class Thing:
 def orig(term):
     return term[:2] + "a!"
 
+
 funcs = {"orig": orig}

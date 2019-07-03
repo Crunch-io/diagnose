@@ -9,7 +9,9 @@ class ProbeTestCase(unittest.TestCase):
     @contextmanager
     def probe(self, type, name, target, value, lifespan=1, custom=None, internal=False):
         mgr = probes.manager
-        mgr.instrument_classes.setdefault("test", probes.instruments.ProbeTestInstrument)
+        mgr.instrument_classes.setdefault(
+            "test", probes.instruments.ProbeTestInstrument
+        )
         instrument_id = None
         try:
             instrument_id = "probe-%s" % name

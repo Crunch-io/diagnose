@@ -270,9 +270,7 @@ class TestTargetCopies(ProbeTestCase):
             # ...etc:
             self.assertTrue(registry["in_a_dict"] is not old_local_a_func)
             registry["in_a_dict"](777)
-            self.assertEqual(
-                i.results, [([], 44), ([], 99999), ([], 1001), ([], 777)]
-            )
+            self.assertEqual(i.results, [([], 44), ([], 99999), ([], 1001), ([], 777)])
 
             # The next problem is that, while our patch is live,
             # if t2 goes out of its original scope, we've still got
