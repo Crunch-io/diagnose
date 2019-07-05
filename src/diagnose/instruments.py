@@ -44,7 +44,9 @@ class Instrument(object):
 
     error_expiration = datetime.datetime(1970, 1, 1)
 
-    def __init__(self, name, value, internal=False, expires=None, custom=None, mgr=None, **kwargs):
+    def __init__(
+        self, name, value, internal=False, expires=None, custom=None, mgr=None, **kwargs
+    ):
         if mgr is None:
             mgr = diagnose.manager
         self.mgr = mgr
