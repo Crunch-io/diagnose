@@ -4,7 +4,14 @@ import gc
 import time
 import types
 
-from mock import _patch as MockPatch, patch
+from mock import patch
+
+try:
+    from mock import _patch as MockPatch
+except ImportError:
+    import mock
+
+    MockPatch = mock._mock._patch
 
 import diagnose
 from diagnose import probes
