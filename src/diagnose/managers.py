@@ -193,6 +193,7 @@ class MongoDBInstrumentManager(InstrumentManager):
         self.period = 60
         self.collection = collection
         self.id_field = id_field
+        self.short_id = hex(id(self))[2:]
 
     @property
     def specs(self):
