@@ -11,6 +11,7 @@ from diagnose import probes
 from diagnose.instruments import ProbeTestInstrument
 from diagnose.test_fixtures import (
     a_func,
+    func_2,
     hard_work,
     Thing,
     to_columns,
@@ -81,7 +82,7 @@ class TestExternalProbe(ProbeTestCase):
             ]
 
     def test_external_caller(self):
-        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
+        probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = ProbeTestInstrument(
@@ -97,8 +98,9 @@ class TestExternalProbe(ProbeTestCase):
             probe.stop()
 
     def test_probe_bad_mock(self):
+        p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
         with self.assertRaises(AttributeError) as exc:
-            probes.FunctionProbe("diagnose.test_fixtures.Thing.notamethod")
+            p.start()
         assert (
             exc.exception.message
             == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
@@ -107,7 +109,7 @@ class TestExternalProbe(ProbeTestCase):
 
 class TestInternalProbe(ProbeTestCase):
     def test_internal_instrument(self):
-        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
+        probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -123,7 +125,7 @@ class TestInternalProbe(ProbeTestCase):
             probe.stop()
 
     def test_internal_exception_in_target(self):
-        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
+        probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -140,7 +142,7 @@ class TestInternalProbe(ProbeTestCase):
             probe.stop()
 
     def test_internal_exception_in_value(self):
-        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
+        probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -159,7 +161,7 @@ class TestInternalProbe(ProbeTestCase):
 
 class TestHotspotValues(ProbeTestCase):
     def test_slowest_line(self):
-        probe = probes.FunctionProbe("diagnose.test_fixtures.hard_work")
+        probe = probes.attach_to("diagnose.test_fixtures.hard_work")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -173,7 +175,7 @@ class TestHotspotValues(ProbeTestCase):
             )
             assert hard_work(0, 10000) == 1000
             assert [tags for tags, value in i.results] == [
-                ["source:28:    summary = len([x for x in output if x % 10 == 0])\n"]
+                ["source:34:    summary = len([x for x in output if x % 10 == 0])\n"]
             ]
             assert [type(value) for tags, value in i.results] == [float]
         finally:
@@ -188,7 +190,7 @@ class TestHotspotValues(ProbeTestCase):
         to_columns(val)
         unpatched = time.time() - start
 
-        probe = probes.FunctionProbe("diagnose.test_fixtures.to_columns")
+        probe = probes.attach_to("diagnose.test_fixtures.to_columns")
         try:
             probe.start()
             probe.instruments["instrument1"] = ProbeTestInstrument(
@@ -219,63 +221,62 @@ def owner_types(obj):
             if getattr(parent, "__dict__", None) is ref:
                 num_instances[type(parent)] += 1
                 break
-        else:
-            num_instances[dict] += 1
     return num_instances
 
 
 class TestTargetCopies(ProbeTestCase):
     def test_target_copies(self):
-        # When module M chooses "from x import y", then patching x.y
+        # When module M chooses "from x import y", then mock.patching x.y
         # does not affect M.y. Similarly, an existing object instance I
         # which has I.y = y is not patched by mock.patch.
         # Assert that FunctionProbe patches (and UNpatches) all such copies of y.
-        old_probes_a_func = a_func
-        old_local_a_func = a_func
+        old_probes_func_2 = func_2
+        old_local_func_2 = func_2
 
         class Entity(object):
             pass
 
         t = Entity()
-        t.add13 = a_func
-        self.assertTrue(t.add13 is old_local_a_func)
+        t.add13 = func_2
+        self.assertTrue(t.add13 is old_local_func_2)
 
         t2 = Entity()
-        t2.add13 = a_func
-        self.assertTrue(t2.add13 is old_local_a_func)
+        t2.add13 = func_2
+        self.assertTrue(t2.add13 is old_local_func_2)
 
-        registry["in_a_dict"] = a_func
-        self.assertTrue(registry["in_a_dict"] is old_local_a_func)
+        registry["in_a_dict"] = func_2
+        self.assertTrue(registry["in_a_dict"] is old_local_func_2)
 
-        probe = probes.FunctionProbe("diagnose.test_fixtures.a_func")
+        probe = probes.attach_to("diagnose.test_fixtures.func_2")
         try:
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
-                name="a_func",
+                name="func_2",
                 value="arg",
                 internal=False,
                 custom=None,
             )
 
             # Invoking x.y is typical and works naturally...
-            self.assertTrue(a_func is not old_probes_a_func)
-            a_func(44)
+            self.assertTrue(func_2 is not old_probes_func_2)
+            func_2(44)
             self.assertEqual(i.results, [([], 44)])
 
-            # ...but invoking M.y (we imported a_func into test_probes' namespace)
+            # ...but invoking M.y (we imported func_2 into test_probes' namespace)
             # is harder:
-            self.assertTrue(a_func is not old_local_a_func)
-            a_func(99999)
+            self.assertTrue(func_2 is not old_local_func_2)
+            func_2(99999)
             self.assertEqual(i.results, [([], 44), ([], 99999)])
 
             # ...and invoking Entity().y is just as hard:
-            self.assertTrue(t.add13 is not old_local_a_func)
+            self.assertTrue(t.add13 is not old_local_func_2)
+            self.assertTrue(t2.add13 is not old_local_func_2)
             t.add13(1001)
             self.assertEqual(i.results, [([], 44), ([], 99999), ([], 1001)])
 
             # ...etc:
-            self.assertTrue(registry["in_a_dict"] is not old_local_a_func)
+            self.assertTrue(registry["in_a_dict"] is not old_local_func_2)
             registry["in_a_dict"](777)
             self.assertEqual(i.results, [([], 44), ([], 99999), ([], 1001), ([], 777)])
 
@@ -283,26 +284,24 @@ class TestTargetCopies(ProbeTestCase):
             # if t2 goes out of its original scope, we've still got
             # a reference to it in our mock patch.
             self.assertEqual(
-                owner_types(a_func),
+                owner_types(func_2),
                 {
-                    types.ModuleType: 3,
+                    types.ModuleType: 2,
                     Entity: 2,
-                    dict: 2,  # why?
-                    probes.WeakMethodPatch: 4,
+                    probes.WeakMethodPatch: 3,
                     MockPatch: 1,
                     probes.DictPatch: 1,
                 },
             )
             del t2
             self.assertEqual(
-                owner_types(a_func),
+                owner_types(func_2),
                 {
-                    types.ModuleType: 3,
+                    types.ModuleType: 2,
                     # The number of Entity references MUST decrease by 1.
                     Entity: 1,
-                    dict: 2,
                     # The number of WeakMethodPatch references MUST decrease by 1.
-                    probes.WeakMethodPatch: 3,
+                    probes.WeakMethodPatch: 2,
                     MockPatch: 1,
                     probes.DictPatch: 1,
                 },
@@ -311,11 +310,11 @@ class TestTargetCopies(ProbeTestCase):
             probe.stop()
 
         # All patches MUST be stopped
-        assert a_func is old_probes_a_func
-        assert a_func is old_local_a_func
-        assert t.add13 is old_local_a_func
-        a_func(123)
-        a_func(456)
+        assert func_2 is old_probes_func_2
+        assert func_2 is old_local_func_2
+        assert t.add13 is old_local_func_2
+        func_2(123)
+        func_2(456)
         t.add13(789)
         registry["in_a_dict"](101112)
         assert i.results == [([], 44), ([], 99999), ([], 1001), ([], 777)]
@@ -338,8 +337,9 @@ class TestTargetCopies(ProbeTestCase):
     def test_probe_nonfunc(self):
         # We REALLY should not be allowed to patch anything
         # that's not a function!
+        p = probes.attach_to("diagnose.test_fixtures.Thing")
         with self.assertRaises(TypeError):
-            probes.FunctionProbe("diagnose.test_fixtures.Thing")
+            p.start()
 
 
 class TestProbeCheckCall(ProbeTestCase):
@@ -376,7 +376,7 @@ class TestProbePatching(ProbeTestCase):
             assert p.instruments.values()[0].results == [([], 15)]
 
     def test_patch_wrapped_function_internal(self):
-        probe = probes.FunctionProbe("diagnose.test_fixtures.Thing.add5")
+        probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
         try:
             probe.start()
             instr = ProbeTestInstrument("deco", "arg1", internal=True)
@@ -392,5 +392,17 @@ class TestHardcodedProbes(ProbeTestCase):
         diagnose.manager.apply()
         assert mult_by_8(3) == 24
         assert [
-            p.instruments.values()[0].results for p in diagnose.manager.probes.values()
+            i.results
+            for p in probes.active_probes.values()
+            for k, i in p.instruments.iteritems()
+            if k.startswith("hardcode:")
         ] == [[([], 24)]]
+
+        diagnose.manager.apply()
+        assert mult_by_8(3) == 24
+        assert [
+            i.results
+            for p in probes.active_probes.values()
+            for k, i in p.instruments.iteritems()
+            if k.startswith("hardcode:")
+        ] == [[([], 24), ([], 24)]]

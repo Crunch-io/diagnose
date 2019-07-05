@@ -14,17 +14,38 @@ import weakref
 import hunter
 import mock
 
-import diagnose
-
 
 omitted = object()
+
+# A registry of FunctionProbe instances.
+# Since probes patch functions, it's imperative that the same function
+# not be patched twice, even in test suites or other scenarios where
+# two services might be applying probes at the same time. This global
+# registry enforces that. Callers should add instruments to probes instead.
+# The FunctionProbe class itself uses this to disallow attaching two
+# FunctionProbes to the same target.
+active_probes = {}
+
+
+def attach_to(target):
+    """Return the probe attached to the given target, or a new one if needed."""
+    probe = active_probes.get(target, None)
+    if probe is None:
+        probe = FunctionProbe(target)
+        active_probes[target] = probe
+    return probe
+
+
+def start_all():
+    for probe in active_probes.itervalues():
+        probe.start()
 
 
 class FunctionProbe(object):
     """A wrapper for a function, to monitor its execution.
 
     target: a dotted Python path to the function to wrap.
-    instruments: a dict of ("id": Instrument instance) pairs.
+    instruments: a dict of ("spec id": Instrument instance) pairs.
 
     When started, a FunctionProbe "monkey-patches" its target, replacing
     it with a wrapper function. That wrapper calls the original target
@@ -37,15 +58,18 @@ class FunctionProbe(object):
     limited to reading the function's inputs, outputs, and timing.
     """
 
-    def __init__(self, target, instruments=None, mgr=None):
+    def __init__(self, target, instruments=None):
+        if target in active_probes:
+            raise RuntimeError(
+                "Cannot apply two probes to the same target. "
+                "Try calling attach_to(target) instead of FunctionProbe(target)."
+            )
         self.target = target
         if instruments is None:
             instruments = {}
         self.instruments = instruments
-        if mgr is None:
-            mgr = diagnose.manager
-        self.mgr = mgr
-        self.make_patches()
+        self.patches = {}
+        active_probes[target] = self
 
     def __str__(self):
         return "%s(target=%r, instruments=%r)" % (
@@ -75,7 +99,6 @@ class FunctionProbe(object):
         @functools.wraps(base)
         def probe_wrapper(*args, **kwargs):
             now = datetime.datetime.utcnow()
-            tags = self.mgr.get_tags()
 
             hotspots = HotspotsFinder()
             internals, externals = [], []
@@ -197,11 +220,10 @@ class FunctionProbe(object):
 
                     for instrument in externals:
                         try:
-                            instrument(tags, [self.mgr.global_namespace, _locals])
+                            instrument.fire(instrument.mgr.global_namespace, _locals)
                         except:
                             try:
-                                instrument.expire_due_to_error()
-                                self.mgr.handle_error(self, instrument)
+                                instrument.handle_error(self)
                             except:
                                 traceback.print_exc()
                 return result
@@ -249,7 +271,6 @@ class FunctionProbe(object):
                                 patches[patch_id] = patch
                             break
 
-        self.target_id = id(original)
         self.patches = patches
 
     @staticmethod
@@ -281,6 +302,9 @@ class FunctionProbe(object):
         return getter
 
     def start(self):
+        """Apply self.patches. Safe to call after already started."""
+        if not self.patches:
+            self.make_patches()
         for p in self.patches.itervalues():
             if not hasattr(p, "is_local"):
                 p.start()
@@ -300,20 +324,19 @@ class TraceHandler(object):
     def __init__(self, probe, instruments):
         self.probe = probe
         self.instruments = instruments
-        self.tags = self.probe.mgr.get_tags()
 
     def __call__(self, event):
         _globals = event.globals
-        _globals.update(self.probe.mgr.global_namespace)
         _locals = {"__event__": event}
         _locals.update(event.locals)
         for instrument in self.instruments:
             try:
-                instrument(self.tags, [_globals, _locals])
+                _g = _globals.copy()
+                _g.update(instrument.mgr.global_namespace)
+                instrument.fire(_g, _locals)
             except:
                 try:
-                    instrument.expire_due_to_error()
-                    self.probe.mgr.handle_error(self.probe, instrument)
+                    instrument.handle_error(self.probe)
                 except:
                     traceback.print_exc()
 

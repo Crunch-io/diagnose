@@ -8,6 +8,9 @@ try:
 except ImportError:
     statsd = None
 
+import diagnose
+from diagnose import probes
+
 
 omitted = object()
 
@@ -41,7 +44,10 @@ class Instrument(object):
 
     error_expiration = datetime.datetime(1970, 1, 1)
 
-    def __init__(self, name, value, internal, expires=None, custom=None, **kwargs):
+    def __init__(self, name, value, internal=False, expires=None, custom=None, mgr=None, **kwargs):
+        if mgr is None:
+            mgr = diagnose.manager
+        self.mgr = mgr
         self.name = name
         self.value = value
         self.internal = internal
@@ -60,17 +66,18 @@ class Instrument(object):
 
     __repr__ = __str__
 
-    def evaluate(self, value, eval_context):
+    def evaluate(self, value, _globals, _locals):
         # Skip eval() if a local variable name
-        v = eval_context[1].get(value, omitted)
+        v = _locals.get(value, omitted)
         if v is omitted:
-            v = eval(value, *eval_context)
+            v = eval(value, _globals, _locals)
         return v
 
-    def merge_tags(self, tags, eval_context):
-        eval_tags = self.custom.get("tags", None)
-        if eval_tags:
-            t = self.evaluate(eval_tags, eval_context)
+    def merge_tags(self, _globals, _locals):
+        tags = self.mgr.get_tags()
+        tag_expr = self.custom.get("tags", None)
+        if tag_expr:
+            t = self.evaluate(tag_expr, _globals, _locals)
             if isinstance(t, dict):
                 t = ["%s:%s" % pair for pair in t.iteritems()]
             if not isinstance(t, list):
@@ -78,7 +85,7 @@ class Instrument(object):
             tags = tags + t
         return tags
 
-    def __call__(self, tags, eval_context):
+    def fire(self, _globals, _locals):
         raise NotImplementedError()
 
     def check_call(self, probe, *args, **kwargs):
@@ -88,9 +95,9 @@ class Instrument(object):
         to check the supplied function args/kwargs, or other state,
         such as self.custom, environment variables, or threadlocals.
         """
-        return probe.mgr.check_call(probe, self, *args, **kwargs)
+        return self.mgr.check_call(probe, self, *args, **kwargs)
 
-    def expire_due_to_error(self):
+    def handle_error(self, probe):
         if self.error_expiration:
             # Set self.expires to long ago, which keeps it from firing until:
             # a) someone edits the probe, or
@@ -98,6 +105,24 @@ class Instrument(object):
             # Even if it doesn't, we only get ~1 error per process,
             # not 1 per call to the target function.
             self.expires = self.error_expiration
+        self.mgr.handle_error(probe, self)
+
+    def __call__(self, f):
+        """Use self as a decorator, attaching a probe to the wrapped function."""
+        classname = sys._getframe(1).f_code.co_name
+        if classname == "<module>":
+            target = "%s.%s" % (f.__module__, f.func_name)
+        else:
+            target = "%s.%s.%s" % (f.__module__, classname, f.func_name)
+
+        probe = probes.attach_to(target)
+        # If we prefix the spec_id with self.mgr.short_id, then that
+        # manager would immediately remove this instrument because
+        # it's not in self.mgr.specs!
+        # Use a hardcoded prefix instead so no manager drops it.
+        probe.instruments["hardcode:%s" % (hash(target),)] = self
+
+        return f
 
 
 class LogInstrument(Instrument):
@@ -106,8 +131,8 @@ class LogInstrument(Instrument):
     MAX_CHARS = 2000
     out = sys.stdout
 
-    def __call__(self, tags, eval_context):
-        v = self.evaluate(self.value, eval_context)
+    def fire(self, _globals, _locals):
+        v = self.evaluate(self.value, _globals, _locals)
         if v is None:
             return
 
@@ -115,7 +140,7 @@ class LogInstrument(Instrument):
         if len(v) > self.MAX_CHARS:
             v = v[: self.MAX_CHARS - 3] + "..."
 
-        tags = self.merge_tags(tags, eval_context)
+        tags = self.merge_tags(_globals, _locals)
 
         t = str(tags)
         if len(t) > self.MAX_CHARS:
@@ -132,8 +157,8 @@ class StatsdInstrumentBase(Instrument):
 
     MAX_CHARS = 2000
 
-    def __call__(self, tags, eval_context):
-        v = self.evaluate(self.value, eval_context)
+    def fire(self, _globals, _locals):
+        v = self.evaluate(self.value, _globals, _locals)
         if v is None:
             return
 
@@ -143,7 +168,7 @@ class StatsdInstrumentBase(Instrument):
                 v = v[: self.MAX_CHARS] + "..."
             raise TypeError("Cannot send non-numeric metric: %s" % (v,))
 
-        self.emit(self.name, v, self.merge_tags(tags, eval_context))
+        self.emit(self.name, v, self.merge_tags(_globals, _locals))
 
     def emit(self, name, value, tags):
         raise NotImplementedError()
@@ -166,7 +191,7 @@ class ProbeTestInstrument(Instrument):
         Instrument.__init__(self, *args, **kwargs)
         self.results = []
 
-    def __call__(self, tags, eval_context):
-        v = self.evaluate(self.value, eval_context)
-        tags = self.merge_tags(tags, eval_context)
+    def fire(self, _globals, _locals):
+        v = self.evaluate(self.value, _globals, _locals)
+        tags = self.merge_tags(_globals, _locals)
         self.results.append((tags, v))

@@ -3,15 +3,17 @@ import datetime
 import unittest
 
 import diagnose
+from diagnose import probes
+
+diagnose.manager.instrument_classes.setdefault(
+    "test", diagnose.instruments.ProbeTestInstrument
+)
 
 
 class ProbeTestCase(unittest.TestCase):
     @contextmanager
     def probe(self, type, name, target, value, lifespan=1, custom=None, internal=False):
         mgr = diagnose.manager
-        mgr.instrument_classes.setdefault(
-            "test", diagnose.instruments.ProbeTestInstrument
-        )
         instrument_id = None
         try:
             instrument_id = "probe-%s" % name
@@ -29,7 +31,7 @@ class ProbeTestCase(unittest.TestCase):
                 "applied": {},
             }
             mgr.apply()
-            yield mgr.probes[mgr.target_map[target]]
+            yield probes.active_probes[target]
         finally:
             if instrument_id is not None:
                 mgr.specs.pop(instrument_id, None)

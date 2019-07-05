@@ -5,6 +5,7 @@ import sys
 from mock import call, patch
 
 import diagnose
+from diagnose import probes
 from diagnose.test_fixtures import a_func, Thing
 
 from . import ProbeTestCase
@@ -51,7 +52,7 @@ class TestHistInstrument(ProbeTestCase):
     def test_hist_instrument(self):
         with patch("diagnose.instruments.statsd") as statsd:
             with self.probe(
-                "hist", "foo", "diagnose.test_fixtures.Thing.do", "len(arg)"
+                "hist", "grr", "diagnose.test_fixtures.Thing.do", "len(arg)"
             ):
                 result = Thing().do("ok")
 
@@ -59,7 +60,7 @@ class TestHistInstrument(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have called for a histogram
-            assert statsd.method_calls[0] == call.histogram("foo", 2, tags=[])
+            assert statsd.method_calls[0] == call.histogram("grr", 2, tags=[])
 
     def test_hist_instrument_err_in_eval(self):
         errs = []
@@ -68,7 +69,7 @@ class TestHistInstrument(ProbeTestCase):
             lambda probe, instrument=None: errs.append(sys.exc_info()[1]),
         ):
             with self.probe(
-                "hist", "bar", "diagnose.test_fixtures.Thing.do", "::len(arg)"
+                "hist", "hmm", "diagnose.test_fixtures.Thing.do", "::len(arg)"
             ):
                 result = Thing().do("ok")
 
@@ -83,7 +84,7 @@ class TestHistInstrument(ProbeTestCase):
         with patch("diagnose.instruments.statsd") as statsd:
             with self.probe(
                 "hist",
-                "bar",
+                "baz",
                 "diagnose.test_fixtures.a_func",
                 "result",
                 custom={"tags": "{'output': arg}"},
@@ -92,7 +93,7 @@ class TestHistInstrument(ProbeTestCase):
 
             # The probe MUST have called for a histogram with our custom tags
             assert statsd.method_calls[0] == call.histogram(
-                "bar", NUM + 13, tags=["output:%s" % NUM]
+                "baz", NUM + 13, tags=["output:%s" % NUM]
             )
 
 
@@ -181,9 +182,9 @@ class TestMultipleInstruments(ProbeTestCase):
         with patch("diagnose.instruments.statsd") as statsd:
             mgr = diagnose.manager
             try:
-                target = "diagnose.test_fixtures.a_func"
+                target1 = "diagnose.test_fixtures.a_func"
                 mgr.specs["a_func"] = spec = {
-                    "target": target,
+                    "target": target1,
                     "instrument": {
                         "type": "hist",
                         "name": "a_func",
@@ -206,12 +207,15 @@ class TestMultipleInstruments(ProbeTestCase):
                 assert statsd.method_calls == [call.histogram("a_func", 100, tags=[])]
 
                 # Change the probe to a different target
-                spec["target"] = "diagnose.test_fixtures.Thing.do"
+                target2 = "diagnose.test_fixtures.Thing.do"
+                spec["target"] = target2
                 mgr.apply()
-                _id = mgr.target_map["diagnose.test_fixtures.Thing.do"]
-                assert mgr.probes[_id].instruments.values()[0].name == "a_func"
+                assert (
+                    probes.active_probes[target2].instruments.values()[0].name
+                    == "a_func"
+                )
                 # The old target MUST be removed from the probes
-                assert target not in mgr.probes
+                assert target1 not in probes.active_probes
 
                 # Trigger the (revised) probe
                 result = Thing().do(2)

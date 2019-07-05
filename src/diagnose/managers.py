@@ -1,7 +1,6 @@
-"""Managers for probes."""
+"""Managers for probe instruments."""
 
 import datetime
-import itertools
 import math
 import sys
 import threading
@@ -9,7 +8,7 @@ import time
 import traceback
 
 from . import instruments
-from .probes import FunctionProbe
+from . import probes
 
 
 def mag(obj, base=10):
@@ -27,17 +26,11 @@ def mag(obj, base=10):
     return m
 
 
-# ----------------------------- Probe Manager ----------------------------- #
+# --------------------------- Instrument Manager --------------------------- #
 
 
-class ProbeManager(object):
-    """A Manager for Probes, which applies probes to targets.
-
-    Since probes patch functions, it's imperative that the same function
-    not be patched twice, even in test suites or other scenarios where
-    two services might be applying probes at the same time. This
-    singleton manager enforces that; instead, callers add instruments
-    to probes.
+class InstrumentManager(object):
+    """A Manager which applies instruments to probes to targets.
 
     specs: a dict of {id: spec} dicts, each of which defines an instrument. Fields:
         * target: the dotted path to a function to wrap in a FunctionProbe
@@ -53,7 +46,6 @@ class ProbeManager(object):
             * err: a string with any error raised in the given process, or None
     """
 
-    probes = {}
     instrument_classes = {
         "log": instruments.LogInstrument,
         "hist": instruments.HistogramInstrument,
@@ -66,58 +58,26 @@ class ProbeManager(object):
     global_namespace = {"datetime": datetime, "math": math, "time": time, "mag": mag}
 
     def __init__(self, process_id=None):
-        self.probes = {}
-        self.target_map = {}
-        self.hardcoded_specs = {}
         self.specs = {}
         self.process_id = process_id
         self.apply_thread = None
         self.period = 60
-
-    def hardcode(self, type, name, value, internal=False, custom=None):
-        def marker(f):
-            classname = sys._getframe(1).f_code.co_name
-            if classname == "<module>":
-                target = "%s.%s" % (f.__module__, f.func_name)
-            else:
-                target = "%s.%s.%s" % (f.__module__, classname, f.func_name)
-            self.hardcoded_specs[hash(target)] = {
-                "target": target,
-                "instrument": {
-                    "type": type,
-                    "name": name,
-                    "value": value,
-                    "internal": internal,
-                    "custom": custom or {},
-                },
-                "lifespan": None,
-                "lastmodified": datetime.datetime.utcnow(),
-                "applied": {},
-            }
-            return f
-
-        return marker
+        self.short_id = hex(id(self))[2:]
 
     def apply(self):
-        """Add/remove probes to match our spec."""
+        """Add/remove instruments to match our spec."""
         with self.lock:
             self._apply()
 
     def _apply(self):
         seen_instruments = {}
-        for id, doc in itertools.chain(
-            self.hardcoded_specs.iteritems(), self.specs.iteritems()
-        ):
+        for spec_id, doc in self.specs.iteritems():
+            full_id = "%s:%s" % (self.short_id, spec_id)
             target = doc["target"]
-            seen_instruments[id] = target
+            seen_instruments[full_id] = target
             probe, I, cls, expires = None, None, None, None
             try:
-                probe = self.probes.get(self.target_map.get(target, None), None)
-                if probe is None:
-                    probe = FunctionProbe(target, instruments={}, mgr=self)
-                    self.target_map[target] = probe.target_id
-                    self.probes[probe.target_id] = probe
-                    probe.start()
+                probe = probes.attach_to(target)
 
                 lifespan = doc["lifespan"]
                 if lifespan is None:
@@ -128,10 +88,12 @@ class ProbeManager(object):
                 cls = self.instrument_classes[doc["instrument"]["type"]]
 
                 # Add or modify instruments
-                I = probe.instruments.get(id, None)
+                I = probe.instruments.get(full_id, None)
                 modified = False
                 if I is None or I.__class__ != cls:
-                    probe.instruments[id] = cls(expires=expires, **doc["instrument"])
+                    probe.instruments[full_id] = cls(
+                        mgr=self, expires=expires, **doc["instrument"]
+                    )
                     modified = True
                 else:
                     for key in ("name", "value", "internal", "custom"):
@@ -142,34 +104,36 @@ class ProbeManager(object):
                         I.expires = expires
                         modified = True
                 if modified:
-                    self.mark(id, doc)
+                    self.mark(spec_id, doc)
             except:
                 if I is None:
                     if cls is None:
                         cls = self.instrument_classes[doc["instrument"]["type"]]
-                    I = cls(expires=expires, **doc["instrument"])
+                    I = cls(mgr=self, expires=expires, **doc["instrument"])
                 self.handle_error(probe, I)
-                self.mark(id, doc, exception=True)
+                self.mark(spec_id, doc, exception=True)
 
         # Remove defunct instruments, probes
-        for target_id, probe in self.probes.items():
-            probe.instruments = dict(
-                [
-                    (spec_id, instrument)
-                    for spec_id, instrument in probe.instruments.iteritems()
-                    if seen_instruments.get(spec_id, None) == probe.target
-                ]
-            )
+        for target, probe in probes.active_probes.items():
+            for full_id, instrument in probe.instruments.items():
+                # Remove any instrument from a probe if this manager
+                # thinks it doesn't apply to the same target anymore.
+                if full_id.startswith(self.short_id):
+                    if seen_instruments.get(full_id, None) != probe.target:
+                        probe.instruments.pop(full_id, None)
+
             if not probe.instruments:
-                p = self.probes.pop(target_id, None)
+                p = probes.active_probes.pop(target, None)
                 if p is not None:
                     p.stop()
 
-    def apply_probes_in_background(self, period=60):
+        probes.start_all()
+
+    def apply_in_background(self, period=60):
         self.period = period
         if self.apply_thread is None:
             self.apply_thread = t = threading.Thread(target=self._cycle)
-            t.setName("apply_probes_in_background")
+            t.setName("diagnose.manager.apply_in_background")
             t.daemon = True
             t.start()
 
@@ -178,12 +142,11 @@ class ProbeManager(object):
             time.sleep(self.period)
             try:
                 self.apply()
-                # log.info("Probe Manager applied")
             except:
                 self.handle_error()
 
     def check_call(self, probe, instrument, *args, **kwargs):
-        """Return True if the given instrument should be applied, False otherwise.
+        """Return True if the given instrument should be called, False otherwise.
 
         By default, this always returns True. Override this in a subclass
         to check the supplied function args/kwargs, or other state,
@@ -203,7 +166,7 @@ class ProbeManager(object):
         traceback.print_exc()
 
     def mark(self, id, doc, exception=False):
-        """Record probe application success/failure."""
+        """Record instrument application success/failure."""
         doc = self.specs.get(id, None)
         if doc is not None:
             error = None
@@ -218,16 +181,13 @@ class ProbeManager(object):
                 doc["applied"][self.process_id] = newval
 
 
-class MongoDBProbeManager(ProbeManager):
-    """A ProbeManager which reads and writes specs in MongoDB.
+class MongoDBInstrumentManager(InstrumentManager):
+    """An InstrumentManager which reads and writes specs in MongoDB.
 
     collection: a pymongo collection in which specs are stored.
     """
 
     def __init__(self, process_id, collection, id_field="id"):
-        self.probes = {}
-        self.target_map = {}
-        self.hardcoded_specs = {}
         self.process_id = process_id
         self.apply_thread = None
         self.period = 60
@@ -239,7 +199,7 @@ class MongoDBProbeManager(ProbeManager):
         return dict((doc[self.id_field], doc) for doc in self.collection.find())
 
     def mark(self, id, doc, exception=False):
-        """Record probe application success/failure."""
+        """Record instrument application success/failure."""
         doc = self.specs.get(id, None)
         if doc is not None:
             error = None

@@ -23,6 +23,12 @@ def a_func(arg):
     return output
 
 
+def func_2(arg):
+    extra = 17
+    output = arg + extra
+    return output
+
+
 def hard_work(lower, upper):
     output = xrange(lower, upper)
     summary = len([x for x in output if x % 10 == 0])
@@ -64,6 +70,6 @@ def orig(term):
 funcs = {"orig": orig}
 
 
-@diagnose.manager.hardcode("test", "mult_by_8", "result")
+@diagnose.instruments.ProbeTestInstrument("mult_by_8", "result")
 def mult_by_8(arg):
     return arg * 8

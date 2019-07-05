@@ -14,17 +14,17 @@ where you might perform a dozen small experiments to measure your live code.
 This library allows you to dynamically add probes at runtime instead.
 Probes are:
 * reliable: errors will never affect your production code
-* ephemeral: set a "lifespan" (in minutes), after which point the probe detaches
+* ephemeral: set a "lifespan" (in minutes) for each instrument
 * comprehensive: all references to the target function are instrumented
 * fast: measure most functions with fast local lookups; uses hunter (in Cython) for more invasive internal probes.
 
-Individual probes can be created directly with the FunctionProbe class:
+Individual probes can be created directly by calling `attach_to(target)`:
 
 ```#python
 >>> from path.to.module import myclass
 >>> myclass().add13(arg=5)
 18
->>> p = diagnose.FunctionProbe("path.to.module.myclass.add13")
+>>> p = diagnose.probes.attach_to("path.to.module.myclass.add13")
 >>> p.instruments["foo"] = diagnose.LogInstrument("foo", "arg", internal=False)
 >>> p.start()
 >>> myclass().add13(arg=5)
@@ -34,9 +34,7 @@ Probe (foo) = 5
 
 ## Managers
 
-In a running system, we want to add, remove, start, and stop probes without
-having to code at an interactive prompt or restart the system; we do this
-with a ProbeManager. Start by configuring the global diagnose.manager:
+In a running system, we want to add, remove, start, and stop probes and instruments without having to code at an interactive prompt or restart the system; we do this with an InstrumentManager. Start by configuring the global diagnose.manager:
 
 ```#python
 >>> diagnose.manager.instrument_classes = {
@@ -47,10 +45,10 @@ with a ProbeManager. Start by configuring the global diagnose.manager:
 >>> diagnose.manager.global_namespace.update({"foo": foo})
 ```
 
-Later, you can define probes:
+Later, you can define instruments:
 
 ```#python
->>> diagnose.manager.specs["probe-1"] = {
+>>> diagnose.manager.specs["instr-1"] = {
     "target": "myapp.module.file.class.method",
     "instrument": {
         "type": "log",
@@ -65,9 +63,7 @@ Later, you can define probes:
 }
 ```
 
-Then call `diagnose.manager.apply()`, either when you add a probe, or on a
-schedule if your store is in MongoDB and the process defining probes is not
-the target process.
+Then call `diagnose.manager.apply()`, either when you add an instrument, or on a schedule if your store is in MongoDB and the process defining probes is not the target process.
 
 The `applied` dictionary will be filled with information about which processes
 have applied the probe, and whether they encountered any errors.
