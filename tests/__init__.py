@@ -12,7 +12,7 @@ diagnose.manager.instrument_classes.setdefault(
 
 class ProbeTestCase(unittest.TestCase):
     @contextmanager
-    def probe(self, type, name, target, value, lifespan=1, custom=None, internal=False):
+    def probe(self, type, name, target, value, lifespan=1, custom=None, event="return"):
         mgr = diagnose.manager
         instrument_id = None
         try:
@@ -23,7 +23,7 @@ class ProbeTestCase(unittest.TestCase):
                     "type": type,
                     "name": name,
                     "value": value,
-                    "internal": internal,
+                    "event": event,
                     "custom": custom or {},
                 },
                 "lifespan": lifespan,

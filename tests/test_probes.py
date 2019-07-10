@@ -1,6 +1,7 @@
 from collections import defaultdict
 import datetime
 import gc
+import sys
 import time
 import types
 
@@ -32,10 +33,10 @@ from . import ProbeTestCase
 registry = {}
 
 
-class TestExternalProbe(ProbeTestCase):
-    def test_external_probe_result(self):
+class TestReturnEvent(ProbeTestCase):
+    def test_return_event_result(self):
         with self.probe(
-            "test", "do", "diagnose.test_fixtures.Thing.do", "result", internal=False
+            "test", "do", "diagnose.test_fixtures.Thing.do", "result"
         ) as p:
             result = Thing().do("ok")
 
@@ -44,9 +45,9 @@ class TestExternalProbe(ProbeTestCase):
             # The probe MUST have logged an entry
             assert p.instruments.values()[0].results == [([], "<ok>")]
 
-    def test_external_probe_elapsed(self):
+    def test_return_event_elapsed(self):
         with self.probe(
-            "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed", internal=False
+            "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed"
         ) as p:
             start = time.time()
             result = Thing().do("ok")
@@ -57,13 +58,12 @@ class TestExternalProbe(ProbeTestCase):
             # The probe MUST have logged an entry
             assert p.instruments.values()[0].results[0][1] < elapsed
 
-    def test_external_probe_locals(self):
+    def test_return_event_locals(self):
         with self.probe(
             "test",
             "do",
             "diagnose.test_fixtures.Thing.do",
             "sorted(locals().keys())",
-            internal=False,
         ) as p:
             result = Thing().do("ok")
 
@@ -88,7 +88,7 @@ class TestExternalProbe(ProbeTestCase):
                 )
             ]
 
-    def test_external_caller(self):
+    def test_return_event_locals_frame(self):
         probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
@@ -96,26 +96,89 @@ class TestExternalProbe(ProbeTestCase):
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="a_func",
                 value="frame.f_back.f_code.co_name",
-                internal=False,
                 custom=None,
             )
             a_func(923775)
-            assert probe.instruments["instrument1"].results, ["test_external_caller"]
+            assert probe.instruments["instrument1"].results, ["test_locals_frame"]
         finally:
             probe.stop()
 
-    def test_probe_bad_mock(self):
-        p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
-        with self.assertRaises(AttributeError) as exc:
-            p.start()
-        assert (
-            exc.exception.message
-            == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
-        )
+
+class TestCallEvent(ProbeTestCase):
+    def test_call_event_args(self):
+        with self.probe(
+            "test", "do", "diagnose.test_fixtures.Thing.do", "args", event="call"
+        ) as p:
+            t = Thing()
+            result = t.do("ok")
+
+            assert result == "<ok>"
+
+            # The probe MUST have logged an entry
+            assert p.instruments.values()[0].results == [([], (t, "ok"))]
+
+    def test_call_event_elapsed(self):
+        with self.probe(
+            "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed", event="call"
+        ) as p:
+            errs = []
+            p.instruments.values()[0].handle_error = lambda probe: errs.append(sys.exc_info()[1].message)
+            result = Thing().do("ok")
+
+            assert result == "<ok>"
+
+            # The probe MUST NOT have logged an entry...
+            assert p.instruments.values()[0].results == []
+            # ...but the instrument MUST have handled the error:
+            assert errs == ["name 'elapsed' is not defined"]
+
+    def test_call_event_locals(self):
+        with self.probe(
+            "test",
+            "do",
+            "diagnose.test_fixtures.Thing.do",
+            "sorted(locals().keys())",
+            event="call"
+        ) as p:
+            result = Thing().do("ok")
+
+            assert result == "<ok>"
+
+            # The probe MUST have logged an entry
+            assert p.instruments.values()[0].results == [
+                (
+                    [],
+                    [
+                        "arg",
+                        "args",
+                        "frame",
+                        "kwargs",
+                        "now",
+                        "self",
+                        "start",
+                    ],
+                )
+            ]
+
+    def test_call_event_locals_frame(self):
+        probe = probes.attach_to("diagnose.test_fixtures.a_func")
+        try:
+            probe.start()
+            probe.instruments["instrument1"] = ProbeTestInstrument(
+                expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
+                name="a_func",
+                value="frame.f_back.f_code.co_name",
+                event="call",
+                custom=None,
+            )
+            a_func(923775)
+            assert probe.instruments["instrument1"].results, ["test_locals_frame"]
+        finally:
+            probe.stop()
 
 
-class TestInternalProbe(ProbeTestCase):
-    def test_internal_instrument(self):
+class TestEndEvent(ProbeTestCase):
+    def test_end_event_success(self):
         probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
@@ -123,7 +186,7 @@ class TestInternalProbe(ProbeTestCase):
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="a_func",
                 value="output",
-                internal=True,
+                event="end",
                 custom=None,
             )
             assert a_func(27) == 40
@@ -131,7 +194,7 @@ class TestInternalProbe(ProbeTestCase):
         finally:
             probe.stop()
 
-    def test_internal_exception_in_target(self):
+    def test_end_event_exception_in_target(self):
         probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
             probe.start()
@@ -139,7 +202,7 @@ class TestInternalProbe(ProbeTestCase):
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="a_func",
                 value="extra",
-                internal=True,
+                event="end",
                 custom=None,
             )
             with self.assertRaises(TypeError):
@@ -148,21 +211,26 @@ class TestInternalProbe(ProbeTestCase):
         finally:
             probe.stop()
 
-    def test_internal_exception_in_value(self):
+    def test_end_event_exception_in_value(self):
         probe = probes.attach_to("diagnose.test_fixtures.a_func")
         try:
+            errs = []
+            old_handle_error = diagnose.manager.handle_error
+            diagnose.manager.handle_error = lambda probe, instr: errs.append(sys.exc_info()[1].message)
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="a_func",
                 value="unknown",  # Should throw NameError
-                internal=True,
+                event="end",
                 custom=None,
             )
             assert a_func(1000) == 1013
             assert i.results == []
             assert i.expires == i.error_expiration
+            assert errs == ["name 'unknown' is not defined"]
         finally:
+            diagnose.manager.handle_error = old_handle_error
             probe.stop()
 
 
@@ -175,7 +243,6 @@ class TestHotspotValues(ProbeTestCase):
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="hard_work.slowest.time",
                 value="hotspots.worst.time",
-                internal=False,
                 custom={
                     "tags": '{"source": "%s:%s" % (hotspots.worst.lineno, hotspots.worst.source)}'
                 },
@@ -189,7 +256,8 @@ class TestHotspotValues(ProbeTestCase):
             probe.stop()
 
     def test_hotspot_overhead(self):
-        # Set SCALE to 5000 or something big to see how overhead diminishes.
+        # Set SCALE to 5000 or something big to see how hotspot overhead
+        # diminishes the more work the target function does.
         # It's low in this test suite because people like fast tests.
         SCALE = 100
         val = [dict((str(i), i) for i in xrange(100))] * SCALE
@@ -204,7 +272,6 @@ class TestHotspotValues(ProbeTestCase):
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="to_columns.slowest.time",
                 value="hotspots.worst.time",
-                internal=False,
                 custom={
                     "tags": '{"source": "%s:%s" % (hotspots.worst.lineno, hotspots.worst.source)}'
                 },
@@ -216,7 +283,7 @@ class TestHotspotValues(ProbeTestCase):
             probe.stop()
 
         print(
-            "UNPATCHED: %s PATCHED: %s (%s%%)"
+            "\nUNPATCHED: %s PATCHED: %s (%s%%)"
             % (unpatched, patched, int((patched / unpatched) * 100))
         )
 
@@ -231,7 +298,16 @@ def owner_types(obj):
     return num_instances
 
 
-class TestTargetCopies(ProbeTestCase):
+class TestTargets(ProbeTestCase):
+    def test_probe_bad_mock(self):
+        p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
+        with self.assertRaises(AttributeError) as exc:
+            p.start()
+        assert (
+            exc.exception.message
+            == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+        )
+
     def test_target_copies(self):
         # When module M chooses "from x import y", then mock.patching x.y
         # does not affect M.y. Similarly, an existing object instance I
@@ -261,7 +337,6 @@ class TestTargetCopies(ProbeTestCase):
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
                 name="func_2",
                 value="arg",
-                internal=False,
                 custom=None,
             )
 
@@ -348,6 +423,27 @@ class TestTargetCopies(ProbeTestCase):
         with self.assertRaises(TypeError):
             p.start()
 
+    def test_patch_staticmethod(self):
+        with self.probe(
+            "test",
+            "quantile",
+            "diagnose.test_fixtures.Thing.static",
+            "result",
+        ) as p:
+            assert Thing().static() == 15
+            assert p.instruments.values()[0].results == [([], 15)]
+
+    def test_patch_wrapped_function_end_event(self):
+        probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
+        try:
+            probe.start()
+            instr = ProbeTestInstrument("deco", "arg1", event="end")
+            probe.instruments["deco"] = instr
+            Thing().add5(13)
+            assert instr.results == [([], 113)]
+        finally:
+            probe.stop()
+
 
 class TestProbeCheckCall(ProbeTestCase):
     def test_probe_check_call(self):
@@ -368,30 +464,6 @@ class TestProbeCheckCall(ProbeTestCase):
 
                 assert Thing().do("not ok", user_id=10004) == "<not ok>"
                 assert p.instruments.values()[0].results == [([], "<ok>")]
-
-
-class TestProbePatching(ProbeTestCase):
-    def test_patch_staticmethod(self):
-        with self.probe(
-            "test",
-            "quantile",
-            "diagnose.test_fixtures.Thing.static",
-            "result",
-            internal=False,
-        ) as p:
-            assert Thing().static() == 15
-            assert p.instruments.values()[0].results == [([], 15)]
-
-    def test_patch_wrapped_function_internal(self):
-        probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
-        try:
-            probe.start()
-            instr = ProbeTestInstrument("deco", "arg1", internal=True)
-            probe.instruments["deco"] = instr
-            Thing().add5(13)
-            assert instr.results == [([], 113)]
-        finally:
-            probe.stop()
 
 
 class TestHardcodedProbes(ProbeTestCase):

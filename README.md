@@ -32,6 +32,8 @@ Probe (foo) = 5
 18
 ```
 
+Instruments aren't limited to recording devices! Use probes to fire off any kind of event handler. Instruments are free to maintain state themselves, or read it from somewhere else, to control their own behavior or even implement feedback mechanisms. A truly evil instrument could even alter the args/kwargs passed to a function on the fly, or call arbitrary Python code to do any number of crazy things. Consequently, it's up to you to govern what instruments are added to your environment.
+
 ## Managers
 
 In a running system, we want to add, remove, start, and stop probes and instruments without having to code at an interactive prompt or restart the system; we do this with an InstrumentManager. Start by configuring the global diagnose.manager:

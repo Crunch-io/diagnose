@@ -49,13 +49,14 @@ class FunctionProbe(object):
 
     When started, a FunctionProbe "monkey-patches" its target, replacing
     it with a wrapper function. That wrapper calls the original target
-    function, and then calls each instrument. If any instruments are "internal",
-    the probe registers a trace function (via `sys.settrace`) and then
-    calls those instruments just before the original target function returns;
-    the instrument values are evaluated in the globals and locals of that frame.
-    External instruments are evaluated after the function returns; they are
-    much less invasive since they do not call settrace, but they are
-    limited to reading the function's inputs, outputs, and timing.
+    function, calling each instrument at the event it specifies: call, end,
+    or return. If the event is "end", then the probe registers a trace function
+    (via `sys.settrace`) and then calls those instruments just before the
+    original target function returns; the instrument values are evaluated
+    in the globals and locals of that frame. "Call" and "return" instruments
+    are evaluated before or after the function returns; they are much less
+    invasive since they do not call settrace, but they are limited to reading
+    the function's inputs, outputs, and timing.
     """
 
     def __init__(self, target, instruments=None):
@@ -101,15 +102,13 @@ class FunctionProbe(object):
             now = datetime.datetime.utcnow()
 
             hotspots = HotspotsFinder()
-            internals, externals = [], []
+            instruments_by_event = {"call": [], "return": [], "end": []}
             for I in self.instruments.itervalues():
                 if I.expires and now > I.expires:
                     continue
                 if I.check_call(self, *args, **kwargs):
-                    if I.internal:
-                        internals.append(I)
-                    else:
-                        externals.append(I)
+                    instruments_by_event[I.event].append(I)
+                    if I.event in ("call", "return"):
                         if "hotspots" in I.value or "hotspots" in (
                             I.custom.get("tags") or ""
                         ):
@@ -117,7 +116,7 @@ class FunctionProbe(object):
 
             target_obj, target_func_name = self.target.rsplit(".", 1)
             is_unwrapped = base.func_code.co_name == target_func_name
-            if internals:
+            if instruments_by_event["end"]:
                 # We have instruments that require evaluation in the local
                 # context of the function. Call sys.settrace() to gain access.
                 predicate = hunter.When(
@@ -142,7 +141,7 @@ class FunctionProbe(object):
                         # that without a custom Cython Query.
                         module_in=target_obj,
                     ),
-                    TraceHandler(self, internals),
+                    TraceHandler(self, instruments_by_event["end"]),
                 )
                 tracer = hunter.Tracer(
                     # There's no need to call threading.settrace() because
@@ -193,18 +192,10 @@ class FunctionProbe(object):
                 tracer = None
 
             try:
-                start = time.time()
-                result = base(*args, **kwargs)
-                if hotspots.enabled:
-                    hotspots.finish()
-                end = time.time()
-                elapsed = end - start
-                if externals:
+                if instruments_by_event["call"] or instruments_by_event["return"]:
+                    start = time.time()
                     _locals = {
-                        "result": result,
                         "start": start,
-                        "end": end,
-                        "elapsed": elapsed,
                         "now": now,
                         "args": args,
                         "kwargs": kwargs,
@@ -218,14 +209,39 @@ class FunctionProbe(object):
                     # Add kwargs to locals
                     _locals.update(kwargs)
 
-                    for instrument in externals:
+                for instrument in instruments_by_event["call"]:
+                    try:
+                        instrument.fire(instrument.mgr.global_namespace, _locals)
+                    except:
                         try:
-                            instrument.fire(instrument.mgr.global_namespace, _locals)
+                            instrument.handle_error(self)
                         except:
-                            try:
-                                instrument.handle_error(self)
-                            except:
-                                traceback.print_exc()
+                            traceback.print_exc()
+
+                # Execute the base function and obtain its result.
+                result = base(*args, **kwargs)
+
+                if hotspots.enabled:
+                    hotspots.finish()
+
+                if instruments_by_event["return"]:
+                    end = time.time()
+                    elapsed = end - start
+                    _locals.update({
+                        "result": result,
+                        "end": end,
+                        "elapsed": elapsed,
+                    })
+
+                for instrument in instruments_by_event["return"]:
+                    try:
+                        instrument.fire(instrument.mgr.global_namespace, _locals)
+                    except:
+                        try:
+                            instrument.handle_error(self)
+                        except:
+                            traceback.print_exc()
+
                 return result
             finally:
                 if tracer is not None:

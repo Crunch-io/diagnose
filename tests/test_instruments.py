@@ -136,26 +136,26 @@ class TestMultipleInstruments(ProbeTestCase):
             mgr = diagnose.manager
             try:
                 target = "diagnose.test_fixtures.a_func"
-                mgr.specs["a_func_internal"] = {
+                mgr.specs["a_func_end"] = {
                     "target": target,
                     "instrument": {
                         "type": "hist",
-                        "name": "a_func_internal",
+                        "name": "a_func_end",
                         "value": "output",
-                        "internal": True,
+                        "event": "end",
                         "custom": {},
                     },
                     "lifespan": 1,
                     "lastmodified": datetime.datetime.utcnow(),
                     "applied": {},
                 }
-                mgr.specs["a_func_external"] = {
+                mgr.specs["a_func_return"] = {
                     "target": target,
                     "instrument": {
                         "type": "hist",
-                        "name": "a_func_external",
+                        "name": "a_func_return",
                         "value": "result",
-                        "internal": False,
+                        "event": "return",
                         "custom": {},
                     },
                     "lifespan": 1,
@@ -165,8 +165,8 @@ class TestMultipleInstruments(ProbeTestCase):
                 mgr.apply()
                 result = a_func(78)
             finally:
-                mgr.specs.pop("a_func_internal", None)
-                mgr.specs.pop("a_func_external", None)
+                mgr.specs.pop("a_func_end", None)
+                mgr.specs.pop("a_func_return", None)
                 mgr.apply()
 
             # The call MUST succeed.
@@ -174,8 +174,8 @@ class TestMultipleInstruments(ProbeTestCase):
 
             # The instruments MUST each have logged an entry
             assert statsd.method_calls == [
-                call.histogram("a_func_internal", 91, tags=[]),
-                call.histogram("a_func_external", 91, tags=[]),
+                call.histogram("a_func_end", 91, tags=[]),
+                call.histogram("a_func_return", 91, tags=[]),
             ]
 
     def test_replace_instrument(self):
@@ -189,7 +189,7 @@ class TestMultipleInstruments(ProbeTestCase):
                         "type": "hist",
                         "name": "a_func",
                         "value": "arg",
-                        "internal": False,
+                        "event": "return",
                         "custom": {},
                     },
                     "lifespan": 1,

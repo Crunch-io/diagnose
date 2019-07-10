@@ -23,17 +23,20 @@ class Instrument(object):
                 when constructing statsd metric names.
         * value: a Python expression to be evaluated; its result is the
                  "process variable" to be used as the instrument sees fit.
-        * internal: If True, evaluate the value in the context of the
-                    wrapped function (just before it returns). If False
-                    (the default), evaluate the value in a wrapper
-                    context, which contains the local variables:
-                        * result: the return value of the target function
-                        * start/end/elapsed: float times
-                        * now: datetime.datetime.utcnow()
-                        * args/kwargs: inputs to the target function; these are
-                          also included in locals() by their argnames.
-                        * frame: sys._getframe() of the patch wrapper
-
+        * event: a string declaring when to fire the instrument, one of:
+            * call: evaluate the value just before calling the wrapped
+                    function, in a context which contains the local variables:
+                * start: float time
+                * now: datetime.datetime.utcnow()
+                * args/kwargs: inputs to the target function; these are
+                               also included in locals() by their argnames.
+                * frame: sys._getframe() of the patch wrapper
+             * return: the default; evaluate the value just after the wrapped
+                       function returns, in a context with the additional locals:
+                * result: the return value of the target function
+                * end/elapsed: float times
+             * end: evaluate the value in the context of the wrapped function
+                    just before it returns.
         * expires: a datetime, after which point the instrument will not fire,
                    or None to mean no expiration
         * custom: a dict of any additional data for subclasses. May include
@@ -45,23 +48,23 @@ class Instrument(object):
     error_expiration = datetime.datetime(1970, 1, 1)
 
     def __init__(
-        self, name, value, internal=False, expires=None, custom=None, mgr=None, **kwargs
+        self, name, value, event="return", expires=None, custom=None, mgr=None, **kwargs
     ):
         if mgr is None:
             mgr = diagnose.manager
         self.mgr = mgr
         self.name = name
         self.value = value
-        self.internal = internal
+        self.event = event
         self.expires = expires
         self.custom = custom or {}
 
     def __str__(self):
-        return "%s(name=%r, value=%r, internal=%r, expires=%r, custom=%r)" % (
+        return "%s(name=%r, value=%r, event=%r, expires=%r, custom=%r)" % (
             self.__class__.__name__,
             self.name,
             self.value,
-            self.internal,
+            self.event,
             self.expires,
             self.custom,
         )
