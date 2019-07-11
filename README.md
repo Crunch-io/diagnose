@@ -25,7 +25,7 @@ Individual probes can be created directly by calling `attach_to(target)`:
 >>> myclass().add13(arg=5)
 18
 >>> p = diagnose.probes.attach_to("path.to.module.myclass.add13")
->>> p.instruments["foo"] = diagnose.LogInstrument("foo", "arg", internal=False)
+>>> p.instruments["foo"] = diagnose.LogInstrument("foo", "arg")
 >>> p.start()
 >>> myclass().add13(arg=5)
 Probe (foo) = 5
@@ -56,7 +56,7 @@ Later, you can define instruments:
         "type": "log",
         "name": "myapp.method",
         "value": "result",
-        "internal": False,
+        "event": "return",
         "custom": {},
     },
     "lifespan": 10,

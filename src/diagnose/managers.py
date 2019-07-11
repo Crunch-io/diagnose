@@ -37,7 +37,7 @@ class InstrumentManager(object):
         * lastmodified: the datetime when the spec was last changed
         * lifespan: an int; the number of minutes from lastmodified before
                     the instrument should expire.
-        * instrument: a dict of Instrument params (type, name, value, internal, custom).
+        * instrument: a dict of Instrument params (type, name, value, event, custom).
                       The "expires" param is calculated from lastmodified + lifespan.
         * applied: a dict of {process_id: info} pairs, where "info" is a dict with:
             * lm: the "lastmodified" datetime of the instrument when
@@ -96,7 +96,7 @@ class InstrumentManager(object):
                     )
                     modified = True
                 else:
-                    for key in ("name", "value", "internal", "custom"):
+                    for key in ("name", "value", "event", "custom"):
                         if getattr(I, key) != doc["instrument"][key]:
                             setattr(I, key, doc["instrument"][key])
                             modified = True

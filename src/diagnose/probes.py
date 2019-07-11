@@ -201,8 +201,6 @@ class FunctionProbe(object):
                         "kwargs": kwargs,
                         "frame": sys._getframe(),
                     }
-                    if hotspots.enabled:
-                        _locals["hotspots"] = hotspots
                     # Add positional args to locals by name.
                     for i, argname in enumerate(varnames[: len(args)]):
                         _locals[argname] = args[i]
@@ -223,6 +221,7 @@ class FunctionProbe(object):
 
                 if hotspots.enabled:
                     hotspots.finish()
+                    _locals["hotspots"] = hotspots
 
                 if instruments_by_event["return"]:
                     end = time.time()
