@@ -226,11 +226,7 @@ class FunctionProbe(object):
                 if instruments_by_event["return"]:
                     end = time.time()
                     elapsed = end - start
-                    _locals.update({
-                        "result": result,
-                        "end": end,
-                        "elapsed": elapsed,
-                    })
+                    _locals.update({"result": result, "end": end, "elapsed": elapsed})
 
                 for instrument in instruments_by_event["return"]:
                     try:

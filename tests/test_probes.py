@@ -35,9 +35,7 @@ registry = {}
 
 class TestReturnEvent(ProbeTestCase):
     def test_return_event_result(self):
-        with self.probe(
-            "test", "do", "diagnose.test_fixtures.Thing.do", "result"
-        ) as p:
+        with self.probe("test", "do", "diagnose.test_fixtures.Thing.do", "result") as p:
             result = Thing().do("ok")
 
             assert result == "<ok>"
@@ -60,10 +58,7 @@ class TestReturnEvent(ProbeTestCase):
 
     def test_return_event_locals(self):
         with self.probe(
-            "test",
-            "do",
-            "diagnose.test_fixtures.Thing.do",
-            "sorted(locals().keys())",
+            "test", "do", "diagnose.test_fixtures.Thing.do", "sorted(locals().keys())"
         ) as p:
             result = Thing().do("ok")
 
@@ -122,7 +117,9 @@ class TestCallEvent(ProbeTestCase):
             "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed", event="call"
         ) as p:
             errs = []
-            p.instruments.values()[0].handle_error = lambda probe: errs.append(sys.exc_info()[1].message)
+            p.instruments.values()[0].handle_error = lambda probe: errs.append(
+                sys.exc_info()[1].message
+            )
             result = Thing().do("ok")
 
             assert result == "<ok>"
@@ -138,7 +135,7 @@ class TestCallEvent(ProbeTestCase):
             "do",
             "diagnose.test_fixtures.Thing.do",
             "sorted(locals().keys())",
-            event="call"
+            event="call",
         ) as p:
             result = Thing().do("ok")
 
@@ -146,18 +143,7 @@ class TestCallEvent(ProbeTestCase):
 
             # The probe MUST have logged an entry
             assert p.instruments.values()[0].results == [
-                (
-                    [],
-                    [
-                        "arg",
-                        "args",
-                        "frame",
-                        "kwargs",
-                        "now",
-                        "self",
-                        "start",
-                    ],
-                )
+                ([], ["arg", "args", "frame", "kwargs", "now", "self", "start"])
             ]
 
     def test_call_event_locals_frame(self):
@@ -216,7 +202,9 @@ class TestEndEvent(ProbeTestCase):
         try:
             errs = []
             old_handle_error = diagnose.manager.handle_error
-            diagnose.manager.handle_error = lambda probe, instr: errs.append(sys.exc_info()[1].message)
+            diagnose.manager.handle_error = lambda probe, instr: errs.append(
+                sys.exc_info()[1].message
+            )
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
                 expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
@@ -425,10 +413,7 @@ class TestTargets(ProbeTestCase):
 
     def test_patch_staticmethod(self):
         with self.probe(
-            "test",
-            "quantile",
-            "diagnose.test_fixtures.Thing.static",
-            "result",
+            "test", "quantile", "diagnose.test_fixtures.Thing.static", "result"
         ) as p:
             assert Thing().static() == 15
             assert p.instruments.values()[0].results == [([], 15)]
