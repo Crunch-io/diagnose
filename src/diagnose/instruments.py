@@ -167,13 +167,31 @@ class StatsdInstrumentBase(Instrument):
         if v is None:
             return
 
-        if not isinstance(v, (int, float, long)):
-            v = str(v)
-            if len(v) > self.MAX_CHARS:
-                v = v[: self.MAX_CHARS] + "..."
-            raise TypeError("Cannot send non-numeric metric: %s" % (v,))
+        tags = self.merge_tags(_globals, _locals)
 
-        self.emit(self.name, v, self.merge_tags(_globals, _locals))
+        if isinstance(v, (tuple, list, set)):
+            for item in v:
+                itemtags = []
+                if isinstance(item, (tuple, list)) and len(item) == 2:
+                    item, itemtags = item
+                    if not isinstance(itemtags, list):
+                        itemtags = [itemtags]
+
+                if not isinstance(item, (int, float, long)):
+                    item = str(item)
+                    if len(item) > self.MAX_CHARS:
+                        item = item[: self.MAX_CHARS] + "..."
+                    raise TypeError("Cannot send non-numeric metric: %s" % (item,))
+
+                self.emit(self.name, item, tags + itemtags)
+        else:
+            if not isinstance(v, (int, float, long)):
+                v = str(v)
+                if len(v) > self.MAX_CHARS:
+                    v = v[: self.MAX_CHARS] + "..."
+                raise TypeError("Cannot send non-numeric metric: %s" % (v,))
+
+            self.emit(self.name, v, tags)
 
     def emit(self, name, value, tags):
         raise NotImplementedError()

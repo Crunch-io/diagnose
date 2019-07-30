@@ -6,7 +6,7 @@ from mock import call, patch
 
 import diagnose
 from diagnose import probes
-from diagnose.test_fixtures import a_func, Thing
+from diagnose.test_fixtures import a_func, hard_work, Thing
 
 from . import ProbeTestCase
 
@@ -95,6 +95,44 @@ class TestHistInstrument(ProbeTestCase):
             assert statsd.method_calls[0] == call.histogram(
                 "baz", NUM + 13, tags=["output:%s" % NUM]
             )
+
+    def test_hist_multiple_values(self):
+        with patch("diagnose.instruments.statsd") as statsd:
+            # Emit multiple values from a single event
+            with self.probe(
+                "hist",
+                "qux",
+                "diagnose.test_fixtures.hard_work",
+                "range(lower, upper)",
+                custom={"tags": "{'output': result}"},
+            ):
+                assert hard_work(8, 11) == 1
+
+            # The probe MUST have called for THREE histograms
+            assert statsd.method_calls == [
+                call.histogram("qux", 8, tags=["output:1"]),
+                call.histogram("qux", 9, tags=["output:1"]),
+                call.histogram("qux", 10, tags=["output:1"]),
+            ]
+
+        with patch("diagnose.instruments.statsd") as statsd:
+            # Emit multiple values with separate tags for a single event.
+            with self.probe(
+                "hist",
+                "qux",
+                "diagnose.test_fixtures.hard_work",
+                "[(x, 'odd:%s' % ('true' if x % 2 else 'false')) for x in xrange(lower, upper)]",
+                custom={"tags": "{'output': result}"},
+            ):
+                assert hard_work(8, 11) == 1
+
+            # The probe MUST have called for THREE histograms
+            # and varied the "odd" tag for each.
+            assert statsd.method_calls == [
+                call.histogram("qux", 8, tags=["output:1", "odd:false"]),
+                call.histogram("qux", 9, tags=["output:1", "odd:true"]),
+                call.histogram("qux", 10, tags=["output:1", "odd:false"]),
+            ]
 
 
 class TestIncrInstrument(ProbeTestCase):
