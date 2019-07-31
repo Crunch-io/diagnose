@@ -32,6 +32,31 @@ Probe (foo) = 5
 18
 ```
 
+## Instruments
+
+Each probe can have multiple instruments. When a probe is hit by the runtime, it fires off the event to each instrument. Instruments have the following properties:
+* name: a name for the instrument; may be used in output, such as when constructing statsd metric names.
+* value: a Python expression to be evaluated; its result is used as the instrument sees fit: logged, sent as a metric value, or other output. For statsd instruments, return a list of numbers to emit multiple data points, or a list of (number, tag/tags) pairs to facet them by tags.
+* event: a string declaring when to fire the instrument, one of:
+    * call: evaluate the value just before calling the probed function, in a context which contains the local variables:
+        * start: float time.time()
+        * now: datetime.datetime.utcnow()
+        * args/kwargs: inputs to the target function; these are also included in locals() by their argnames. For example, `def foo(self, bar, **kwargs)` will place "self" and "bar" in this local namespace, plus the names of any other kwargs passed to the function.
+        * frame: `sys._getframe()` of the patch wrapper. The name of the function that called the target, for example, is `frame.f_back.f_code.co_name`.
+     * return: the default; evaluate the value just after the probed function returns, in a context with the additional locals:
+        * result: the return value of the target function
+        * end/elapsed: float time.time()s
+        * hotspots: if referenced in the value or custom["tags"], settrace() is used to time each line of code in the probed function (and no deeper, but still VERY slow--USE WITH CARE). This object has the following attributes:
+            * slowest: a namedtuple of (time, lineno, source) fields for the line with the slowest <i>single</i> execution time.
+            * worst: a namedtuple of (time, lineno, source) fields for the line with the worst <i>cumulative</i> execution time.
+            * calls: a dict of (lineno, [count, max, sum]) pairs.
+            * filename: the name of the file in which the target is found.
+            * source(lineno): the source code for the given lineno in self.filename. Used to populate slowest/worst.
+     * end: evaluate the value in the context of the probed function just before it returns. This requires settrace() which is much more expensive; use sparingly.
+* expires: a datetime, after which point the instrument will not fire, or None to mean no expiration
+* custom: a dict of any additional data for subclasses. May include other information for filtering events, set points for closed-loop controllers, or other information specific to the kind of instrument. The Instrument base class understands the following members:
+    * tags: a Python expression to be evaluated, which must return a dict or list of tags to include.
+
 Instruments aren't limited to recording devices! Use probes to fire off any kind of event handler. Instruments are free to maintain state themselves, or read it from somewhere else, to control their own behavior or even implement feedback mechanisms. A truly evil instrument could even alter the args/kwargs passed to a function on the fly, or call arbitrary Python code to do any number of crazy things. Consequently, it's up to you to govern what instruments are added to your environment.
 
 ## Managers
