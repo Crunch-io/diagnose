@@ -1,5 +1,7 @@
 """Diagnose, a library for instrumenting code at runtime."""
 
+from contextlib import contextmanager
+
 from . import managers
 from . import instruments
 from . import probes
@@ -11,4 +13,22 @@ from . import probes
 # decides to replace diagnose.manager with an instance of a subclass.
 manager = managers.InstrumentManager()
 
-__all__ = ("probes", "instruments", "manager", "managers")
+__all__ = ("probes", "instruments", "manager", "managers", "sensor")
+
+
+@contextmanager
+def sensor(target, value="result", name="test_instrument", event="return", mgr=None):
+    """Attach a probe to the given target and yield a ProbeTestInstrument."""
+    probe = probes.attach_to(target)
+    probe.instruments[name] = i = instruments.ProbeTestInstrument(
+        name, value, event, expires=None, mgr=mgr
+    )
+    probe.start()
+
+    yield i
+
+    probe.instruments.pop(name)
+    if not probe.instruments:
+        p = probes.active_probes.pop(target, None)
+        if p is not None:
+            p.stop()

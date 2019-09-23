@@ -15,7 +15,7 @@ except ImportError:
     MockPatch = mock._mock._patch
 
 import diagnose
-from diagnose import probes
+from diagnose import probes, sensor
 from diagnose.instruments import ProbeTestInstrument
 from diagnose.test_fixtures import (
     a_func,
@@ -41,7 +41,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [([], "<ok>")]
+            assert p.instruments.values()[0].results == ["<ok>"]
 
     def test_return_event_elapsed(self):
         with self.probe(
@@ -54,7 +54,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results[0][1] < elapsed
+            assert p.instruments.values()[0].results[0] < elapsed
 
     def test_return_event_locals(self):
         with self.probe(
@@ -66,21 +66,18 @@ class TestReturnEvent(ProbeTestCase):
 
             # The probe MUST have logged an entry
             assert p.instruments.values()[0].results == [
-                (
-                    [],
-                    [
-                        "arg",
-                        "args",
-                        "elapsed",
-                        "end",
-                        "frame",
-                        "kwargs",
-                        "now",
-                        "result",
-                        "self",
-                        "start",
-                    ],
-                )
+                [
+                    "arg",
+                    "args",
+                    "elapsed",
+                    "end",
+                    "frame",
+                    "kwargs",
+                    "now",
+                    "result",
+                    "self",
+                    "start",
+                ]
             ]
 
     def test_return_event_locals_frame(self):
@@ -94,7 +91,9 @@ class TestReturnEvent(ProbeTestCase):
                 custom=None,
             )
             a_func(923775)
-            assert probe.instruments["instrument1"].results, ["test_locals_frame"]
+            assert probe.instruments["instrument1"].results == [
+                "test_return_event_locals_frame"
+            ]
         finally:
             probe.stop()
 
@@ -110,7 +109,7 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [([], (t, "ok"))]
+            assert p.instruments.values()[0].results == [(t, "ok")]
 
     def test_call_event_elapsed(self):
         with self.probe(
@@ -143,7 +142,7 @@ class TestCallEvent(ProbeTestCase):
 
             # The probe MUST have logged an entry
             assert p.instruments.values()[0].results == [
-                ([], ["arg", "args", "frame", "kwargs", "now", "self", "start"])
+                ["arg", "args", "frame", "kwargs", "now", "self", "start"]
             ]
 
     def test_call_event_locals_frame(self):
@@ -158,7 +157,9 @@ class TestCallEvent(ProbeTestCase):
                 custom=None,
             )
             a_func(923775)
-            assert probe.instruments["instrument1"].results, ["test_locals_frame"]
+            assert probe.instruments["instrument1"].results == [
+                "test_call_event_locals_frame"
+            ]
         finally:
             probe.stop()
 
@@ -176,7 +177,7 @@ class TestEndEvent(ProbeTestCase):
                 custom=None,
             )
             assert a_func(27) == 40
-            assert i.results == [([], 40)]
+            assert i.results == [40]
         finally:
             probe.stop()
 
@@ -193,7 +194,7 @@ class TestEndEvent(ProbeTestCase):
             )
             with self.assertRaises(TypeError):
                 a_func(None)
-            self.assertEqual(i.results, [([], 13)])
+            self.assertEqual(i.results, [13])
         finally:
             probe.stop()
 
@@ -236,10 +237,10 @@ class TestHotspotValues(ProbeTestCase):
                 },
             )
             assert hard_work(0, 10000) == 1000
-            assert [tags for tags, value in i.results] == [
+            assert [tags for tags, value in i.log] == [
                 ["source:34:    summary = len([x for x in output if x % 10 == 0])\n"]
             ]
-            assert [type(value) for tags, value in i.results] == [float]
+            assert [type(value) for tags, value in i.log] == [float]
         finally:
             probe.stop()
 
@@ -331,24 +332,24 @@ class TestTargets(ProbeTestCase):
             # Invoking x.y is typical and works naturally...
             self.assertTrue(func_2 is not old_probes_func_2)
             func_2(44)
-            self.assertEqual(i.results, [([], 44)])
+            self.assertEqual(i.results, [44])
 
             # ...but invoking M.y (we imported func_2 into test_probes' namespace)
             # is harder:
             self.assertTrue(func_2 is not old_local_func_2)
             func_2(99999)
-            self.assertEqual(i.results, [([], 44), ([], 99999)])
+            self.assertEqual(i.results, [44, 99999])
 
             # ...and invoking Entity().y is just as hard:
             self.assertTrue(t.add13 is not old_local_func_2)
             self.assertTrue(t2.add13 is not old_local_func_2)
             t.add13(1001)
-            self.assertEqual(i.results, [([], 44), ([], 99999), ([], 1001)])
+            self.assertEqual(i.results, [44, 99999, 1001])
 
             # ...etc:
             self.assertTrue(registry["in_a_dict"] is not old_local_func_2)
             registry["in_a_dict"](777)
-            self.assertEqual(i.results, [([], 44), ([], 99999), ([], 1001), ([], 777)])
+            self.assertEqual(i.results, [44, 99999, 1001, 777])
 
             # The next problem is that, while our patch is live,
             # if t2 goes out of its original scope, we've still got
@@ -387,7 +388,7 @@ class TestTargets(ProbeTestCase):
         func_2(456)
         t.add13(789)
         registry["in_a_dict"](101112)
-        assert i.results == [([], 44), ([], 99999), ([], 1001), ([], 777)]
+        assert i.results == [44, 99999, 1001, 777]
 
     def test_function_registries(self):
         with self.probe("test", "orig", "diagnose.test_fixtures.orig", "result") as p:
@@ -395,9 +396,9 @@ class TestTargets(ProbeTestCase):
 
             # The probe MUST have logged an entry
             i = p.instruments.values()[0]
-            assert i.results == [([], "aha!")]
+            assert i.results == ["aha!"]
 
-            i.results = []
+            i.log = []
 
         assert funcs["orig"]("ahem") == "aha!"
 
@@ -416,7 +417,7 @@ class TestTargets(ProbeTestCase):
             "test", "quantile", "diagnose.test_fixtures.Thing.static", "result"
         ) as p:
             assert Thing().static() == 15
-            assert p.instruments.values()[0].results == [([], 15)]
+            assert p.instruments.values()[0].results == [15]
 
     def test_patch_wrapped_function_end_event(self):
         probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
@@ -425,7 +426,7 @@ class TestTargets(ProbeTestCase):
             instr = ProbeTestInstrument("deco", "arg1", event="end")
             probe.instruments["deco"] = instr
             Thing().add5(13)
-            assert instr.results == [([], 113)]
+            assert instr.results == [113]
         finally:
             probe.stop()
 
@@ -445,10 +446,10 @@ class TestProbeCheckCall(ProbeTestCase):
                 custom={"valid_ids": [1, 2, 3]},
             ) as p:
                 assert Thing().do("ok", user_id=2) == "<ok>"
-                assert p.instruments.values()[0].results == [([], "<ok>")]
+                assert p.instruments.values()[0].results == ["<ok>"]
 
                 assert Thing().do("not ok", user_id=10004) == "<not ok>"
-                assert p.instruments.values()[0].results == [([], "<ok>")]
+                assert p.instruments.values()[0].results == ["<ok>"]
 
 
 class TestHardcodedProbes(ProbeTestCase):
@@ -460,7 +461,7 @@ class TestHardcodedProbes(ProbeTestCase):
             for p in probes.active_probes.values()
             for k, i in p.instruments.iteritems()
             if k.startswith("hardcode:")
-        ] == [[([], 24)]]
+        ] == [[24]]
 
         diagnose.manager.apply()
         assert mult_by_8(3) == 24
@@ -469,4 +470,22 @@ class TestHardcodedProbes(ProbeTestCase):
             for p in probes.active_probes.values()
             for k, i in p.instruments.iteritems()
             if k.startswith("hardcode:")
-        ] == [[([], 24), ([], 24)]]
+        ] == [[24, 24]]
+
+
+class TestSensors(ProbeTestCase):
+    def test_basic_sensor(self):
+        assert probes.active_probes.get("diagnose.test_fixtures.Thing.do") is None
+
+        with sensor("diagnose.test_fixtures.Thing.do") as s:
+            assert s.log == []
+            Thing().do("ok")
+            assert s.results == ["<ok>"]
+        assert probes.active_probes.get("diagnose.test_fixtures.Thing.do") is None
+
+        with sensor("diagnose.test_fixtures.Thing.do") as s:
+            Thing().do("tagless")
+            s.custom["tags"] = '{"foo": "bar"}'
+            Thing().do("tagged")
+            assert s.log == [([], "<tagless>"), (["foo:bar"], "<tagged>")]
+        assert probes.active_probes.get("diagnose.test_fixtures.Thing.do") is None

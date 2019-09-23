@@ -43,6 +43,8 @@ class Instrument(object):
                   other information for filtering events, set points for
                   closed-loop controllers, or other information specific
                   to the kind of instrument.
+        * mgr: an InstrumentManager instance. If None, defaults to the global
+               diagnose.manager
     """
 
     error_expiration = datetime.datetime(1970, 1, 1)
@@ -194,9 +196,13 @@ class ProbeTestInstrument(Instrument):
 
     def __init__(self, *args, **kwargs):
         Instrument.__init__(self, *args, **kwargs)
-        self.results = []
+        self.log = []
+
+    @property
+    def results(self):
+        return [result for tags, result in self.log]
 
     def fire(self, _globals, _locals):
         v = self.evaluate(self.value, _globals, _locals)
         tags = self.merge_tags(_globals, _locals)
-        self.results.append((tags, v))
+        self.log.append((tags, v))
