@@ -91,6 +91,8 @@ class FunctionProbe(object):
             base = original
         elif isinstance(original, (staticmethod, classmethod)):
             base = original.__func__
+        elif isinstance(original, property):
+            base = original.fget
         else:
             raise TypeError(
                 "Cannot probe: %s is not a function." % (repr(self.target),)
@@ -242,12 +244,24 @@ class FunctionProbe(object):
                 if tracer is not None:
                     tracer.stop()
 
-        if isinstance(original, staticmethod):
-            probe_wrapper = staticmethod(probe_wrapper)
-        elif isinstance(original, classmethod):
-            probe_wrapper = classmethod(probe_wrapper)
+        if isinstance(original, property):
+            # We can't patch original.fget directly because it's read-only,
+            # so we replace the whole property with a new one, passing our
+            # probe_wrapper as its fget.
+            # At this time, we only patch fget. If there's enough demand,
+            # we could do all three in the future, but then that would take
+            # three probe_wrapper functions, and what the instruments do
+            # with three instead of one could be very confusing.
+            primary_patch.new = property(
+                probe_wrapper, original.fset, original.fdel, original.__doc__
+            )
+        else:
+            if isinstance(original, staticmethod):
+                probe_wrapper = staticmethod(probe_wrapper)
+            elif isinstance(original, classmethod):
+                probe_wrapper = classmethod(probe_wrapper)
+            primary_patch.new = probe_wrapper
 
-        primary_patch.new = probe_wrapper
         patches = {0: primary_patch}
 
         # Add patches for any other modules/classes which have

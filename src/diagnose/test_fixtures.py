@@ -62,6 +62,10 @@ class Thing:
     def add5(self, arg1):
         return arg1 + 5
 
+    @property
+    def exists(self):
+        return True
+
 
 def orig(term):
     return term[:2] + "a!"

@@ -430,6 +430,19 @@ class TestTargets(ProbeTestCase):
         finally:
             probe.stop()
 
+    def test_patch_property(self):
+        old_prop = Thing.exists
+
+        with self.probe(
+            "test", "quantile", "diagnose.test_fixtures.Thing.exists", "result"
+        ) as p:
+            assert Thing().exists is True
+            assert p.instruments.values()[0].results == [True]
+            assert Thing.exists is not old_prop
+
+        assert Thing().exists is True
+        assert Thing.exists is old_prop
+
 
 class TestProbeCheckCall(ProbeTestCase):
     def test_probe_check_call(self):
