@@ -69,3 +69,19 @@ Then call `diagnose.manager.apply()`, either when you add an instrument, or on a
 
 The `applied` dictionary will be filled with information about which processes
 have applied the probe, and whether they encountered any errors.
+
+## Breakpoints
+
+Breakpoints allow to perform tests that involve concurrency, or that must trigger specific actions at specific times, by setting specific
+breakpoints at which the execution must stop waiting for some conditions to happen.
+
+```#python
+        with Breakpoint(S3Archive, "unarchive") as bp:
+            bp.start_thread(object.unarchive)  # Start in background something that will invoke S3Archive.unarchive
+            bp.wait()  # wait for S3Archive.unarchiave to start
+
+            # perform what has to be done once S3Archive.unarchiave
+            # has been started.
+
+            bp.release()  # let S3Archive.unarchive proceed.
+```
