@@ -219,25 +219,29 @@ class FunctionProbe(object):
                             traceback.print_exc()
 
                 # Execute the base function and obtain its result.
-                result = base(*args, **kwargs)
+                try:
+                    result = base(*args, **kwargs)
+                except:
+                    result = sys.exc_info()[1]
+                    raise
+                finally:
+                    if hotspots.enabled:
+                        hotspots.finish()
+                        _locals["hotspots"] = hotspots
 
-                if hotspots.enabled:
-                    hotspots.finish()
-                    _locals["hotspots"] = hotspots
+                    if instruments_by_event["return"]:
+                        end = time.time()
+                        elapsed = end - start
+                        _locals.update({"result": result, "end": end, "elapsed": elapsed})
 
-                if instruments_by_event["return"]:
-                    end = time.time()
-                    elapsed = end - start
-                    _locals.update({"result": result, "end": end, "elapsed": elapsed})
-
-                for instrument in instruments_by_event["return"]:
-                    try:
-                        instrument.fire(instrument.mgr.global_namespace, _locals)
-                    except:
+                    for instrument in instruments_by_event["return"]:
                         try:
-                            instrument.handle_error(self)
+                            instrument.fire(instrument.mgr.global_namespace, _locals)
                         except:
-                            traceback.print_exc()
+                            try:
+                                instrument.handle_error(self)
+                            except:
+                                traceback.print_exc()
 
                 return result
             finally:

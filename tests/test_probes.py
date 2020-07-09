@@ -97,6 +97,25 @@ class TestReturnEvent(ProbeTestCase):
         finally:
             probe.stop()
 
+    def test_return_event_exception_in_target(self):
+        probe = probes.attach_to("diagnose.test_fixtures.a_func")
+        try:
+            probe.start()
+            probe.instruments["instrument1"] = i = ProbeTestInstrument(
+                expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
+                name="a_func",
+                value="result",
+                event="return",
+                custom=None,
+            )
+            with self.assertRaises(TypeError):
+                a_func(None)
+            self.assertEqual(len(i.results), 1)
+            self.assertEqual(type(i.results[0]), TypeError)
+            self.assertEqual(i.results[0].args, ("unsupported operand type(s) for +: 'NoneType' and 'int'",))
+        finally:
+            probe.stop()
+
 
 class TestCallEvent(ProbeTestCase):
     def test_call_event_args(self):
