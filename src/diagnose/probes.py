@@ -205,7 +205,8 @@ class FunctionProbe(object):
                     }
                     # Add positional args to locals by name.
                     for i, argname in enumerate(varnames[: len(args)]):
-                        _locals[argname] = args[i]
+                        if argname not in ("args", "kwargs"):
+                            _locals[argname] = args[i]
                     # Add kwargs to locals
                     _locals.update(kwargs)
 

@@ -25,6 +25,7 @@ from diagnose.test_fixtures import (
     to_columns,
     funcs,
     mult_by_8,
+    sum4
 )
 
 from . import ProbeTestCase
@@ -446,6 +447,17 @@ class TestTargets(ProbeTestCase):
             probe.instruments["deco"] = instr
             Thing().add5(13)
             assert instr.results == [113]
+        finally:
+            probe.stop()
+
+    def test_patch_class_decorated(self):
+        probe = probes.attach_to("diagnose.test_fixtures.sum4")
+        try:
+            probe.start()
+            instr = ProbeTestInstrument("deco", "args[3]", event="call")
+            probe.instruments["deco"] = instr
+            assert sum4(1, 2, 3, 4) == 10
+            assert instr.results == [4]
         finally:
             probe.stop()
 

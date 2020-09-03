@@ -67,6 +67,21 @@ class Thing:
         return True
 
 
+class ClassDecorator(object):
+
+    def __call__(self, fn):
+        @functools.wraps(fn)
+        def fn2(*args, **kwargs):
+            return fn(*args, **kwargs)
+
+        return fn2
+
+
+@ClassDecorator()
+def sum4(arg1, arg2, arg3, arg4):
+    return arg1 + arg2 + arg3 + arg4
+
+
 def orig(term):
     return term[:2] + "a!"
 
