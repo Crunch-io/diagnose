@@ -454,7 +454,7 @@ class TestTargets(ProbeTestCase):
         probe = probes.attach_to("diagnose.test_fixtures.sum4")
         try:
             probe.start()
-            instr = ProbeTestInstrument("deco", "args[3]", event="call")
+            instr = ProbeTestInstrument("deco", "arg4", event="call")
             probe.instruments["deco"] = instr
             assert sum4(1, 2, 3, 4) == 10
             assert instr.results == [4]

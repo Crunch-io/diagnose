@@ -97,7 +97,7 @@ class FunctionProbe(object):
             raise TypeError(
                 "Cannot probe: %s is not a function." % (repr(self.target),)
             )
-        varnames = base.func_code.co_varnames
+        varnames = self.maybe_unwrap(base).func_code.co_varnames
 
         @functools.wraps(base)
         def probe_wrapper(*args, **kwargs):
@@ -309,7 +309,21 @@ class FunctionProbe(object):
         if getattr(getattr(func, "__code__", None), "co_name", "") == "probe_wrapper":
             return func.__closure__[0].cell_contents
         else:
-            return func
+            try:
+                # If the given func is a func returned from @functools.wraps(orig),
+                # then the only cell in its closure will be the `orig` function.
+                # There may be funcs with a single cell that is a function
+                # that is not the wrapped function, in which case we will
+                # return the wrong signature here, but use of wraps is so
+                # much more common and SO useful to unwrap that we risk it.
+                if len(func.__closure__) == 1:
+                    f = func.__closure__[0].cell_contents
+                    if hasattr(f, "func_code"):
+                        return f
+            except (IndexError, TypeError):
+                pass
+
+        return func
 
     def make_getter(self, patch_id, parent):
         def callback(ref):
