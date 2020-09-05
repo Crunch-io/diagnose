@@ -25,7 +25,7 @@ from diagnose.test_fixtures import (
     to_columns,
     funcs,
     mult_by_8,
-    sum4
+    sum4,
 )
 
 from . import ProbeTestCase
@@ -113,7 +113,10 @@ class TestReturnEvent(ProbeTestCase):
                 a_func(None)
             self.assertEqual(len(i.results), 1)
             self.assertEqual(type(i.results[0]), TypeError)
-            self.assertEqual(i.results[0].args, ("unsupported operand type(s) for +: 'NoneType' and 'int'",))
+            self.assertEqual(
+                i.results[0].args,
+                ("unsupported operand type(s) for +: 'NoneType' and 'int'",),
+            )
         finally:
             probe.stop()
 

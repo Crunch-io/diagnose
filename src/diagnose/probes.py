@@ -97,7 +97,7 @@ class FunctionProbe(object):
             raise TypeError(
                 "Cannot probe: %s is not a function." % (repr(self.target),)
             )
-        varnames = self.maybe_unwrap(base).func_code.co_varnames
+        varnames = self.maybe_unwrap(base).__code__.co_varnames
 
         @functools.wraps(base)
         def probe_wrapper(*args, **kwargs):
@@ -117,7 +117,7 @@ class FunctionProbe(object):
                             hotspots.enabled = True
 
             target_obj, target_func_name = self.target.rsplit(".", 1)
-            is_unwrapped = base.func_code.co_name == target_func_name
+            is_unwrapped = base.__code__.co_name == target_func_name
             if instruments_by_event["end"]:
                 # We have instruments that require evaluation in the local
                 # context of the function. Call sys.settrace() to gain access.
@@ -233,7 +233,9 @@ class FunctionProbe(object):
                     if instruments_by_event["return"]:
                         end = time.time()
                         elapsed = end - start
-                        _locals.update({"result": result, "end": end, "elapsed": elapsed})
+                        _locals.update(
+                            {"result": result, "end": end, "elapsed": elapsed}
+                        )
 
                     for instrument in instruments_by_event["return"]:
                         try:
@@ -318,9 +320,9 @@ class FunctionProbe(object):
                 # much more common and SO useful to unwrap that we risk it.
                 if len(func.__closure__) == 1:
                     f = func.__closure__[0].cell_contents
-                    if hasattr(f, "func_code"):
+                    if hasattr(f, "__code__"):
                         return f
-            except (IndexError, TypeError):
+            except (AttributeError, IndexError, TypeError):
                 pass
 
         return func

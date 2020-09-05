@@ -68,7 +68,6 @@ class Thing:
 
 
 class ClassDecorator(object):
-
     def __call__(self, fn):
         @functools.wraps(fn)
         def fn2(*args, **kwargs):
