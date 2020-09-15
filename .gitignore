@@ -1,35 +1,36 @@
-*.py[cod]
-*.orig
 
-# Packages
-*.egg
-*.egg-info
-dist
-build
-eggs
-parts
-bin
-local
-var
-sdist
-develop-eggs
-.installed.cfg
-lib64
-venv
+
+
+
+
 
 # Installer logs
-pip-log.txt
-
-# Unit test / coverage reports
-.coverage.*
-.tox
-nosetests.xml
-junit.xml
-
-# Translations
-*.mo
-
-.cache
-
+# Packages
 # PyTest
+# Translations
+# Unit test / coverage reports
+*.egg
+*.egg-info
+*.mo
+*.orig
+*.py[cod]
+.cache
+.coverage.*
+.installed.cfg
 .pytest_cache/
+.tox
+/.python-version
+bin
+build
+develop-eggs
+dist
+eggs
+junit.xml
+lib64
+local
+nosetests.xml
+parts
+pip-log.txt
+sdist
+var
+venv
