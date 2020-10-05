@@ -140,7 +140,7 @@ class TestCallEvent(ProbeTestCase):
         ) as p:
             errs = []
             p.instruments.values()[0].handle_error = lambda probe: errs.append(
-                sys.exc_info()[1].message
+                sys.exc_info()[1].args[0] if sys.exc_info()[1].args else ""
             )
             result = Thing().do("ok")
 
@@ -227,7 +227,7 @@ class TestEndEvent(ProbeTestCase):
             errs = []
             old_handle_error = diagnose.manager.handle_error
             diagnose.manager.handle_error = lambda probe, instr: errs.append(
-                sys.exc_info()[1].message
+                sys.exc_info()[1].args[0] if sys.exc_info()[1].args[0] else ""
             )
             probe.start()
             probe.instruments["instrument1"] = i = ProbeTestInstrument(
@@ -316,7 +316,7 @@ class TestTargets(ProbeTestCase):
         with self.assertRaises(AttributeError) as exc:
             p.start()
         assert (
-            exc.exception.message
+            exc.exception.args[0]
             == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
         )
 
@@ -506,7 +506,7 @@ class TestHardcodedProbes(ProbeTestCase):
         assert [
             i.results
             for p in probes.active_probes.values()
-            for k, i in p.instruments.iteritems()
+            for k, i in p.instruments.items()
             if k.startswith("hardcode:")
         ] == [[24]]
 
@@ -515,7 +515,7 @@ class TestHardcodedProbes(ProbeTestCase):
         assert [
             i.results
             for p in probes.active_probes.values()
-            for k, i in p.instruments.iteritems()
+            for k, i in p.instruments.items()
             if k.startswith("hardcode:")
         ] == [[24, 24]]
 

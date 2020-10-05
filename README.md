@@ -82,8 +82,8 @@ breakpoints at which the execution must stop waiting for some conditions to happ
 
             # perform what has to be done once S3Archive.unarchive
             # has been started.
-			# Note: you can get at the unarchive's stack frame using
-			# bp.stackframe
+            # Note: you can get at the unarchive's stack frame using
+            # bp.stackframe
 
             bp.release()  # let S3Archive.unarchive proceed.
 ```
