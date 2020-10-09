@@ -39,7 +39,7 @@ def to_columns(rowlist):
     """Convert [{A: 1, B: 5}, {A: 2, B: 6}] to {A: [1, 2], B: [5, 6]}."""
     dictcols = {}
     for i, rowobj in enumerate(rowlist):
-        for k, v in rowobj.iteritems():
+        for k, v in rowobj.items():
             dictcols.setdefault(k, [None] * i).append(v)
     for k, v in dictcols.items():
         if len(v) < i:

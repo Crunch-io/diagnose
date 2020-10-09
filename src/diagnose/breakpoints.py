@@ -2,6 +2,7 @@
 import functools
 import threading
 import time
+import inspect
 
 omitted = object()
 
@@ -47,6 +48,10 @@ class Breakpoint:
     which is raised whenever the condition is met instead of blocking.
     Use this to simulate errors at specific points rather than simulating
     deterministic interleaving of operations.
+
+    When a breakpoint is hit, the breakpoints "stackframe" attribute is
+    set to the current frame. Using this, you can inspect the call
+    stack or function arguments.
     """
 
     def __init__(
@@ -80,6 +85,7 @@ class Breakpoint:
         self.throw = throw
         self.check_interval = check_interval
         self._started_threads = []
+        self.stackframe = None
 
         self.obj = obj
         self.funcname = funcname
@@ -88,6 +94,7 @@ class Breakpoint:
 
         @functools.wraps(f)
         def breakpoint_wrapper(*args, **kwargs):
+            self.stackframe = inspect.currentframe()
             if not self.break_on_return:
                 self._block_if_condition_met(args, kwargs)
 
@@ -96,6 +103,9 @@ class Breakpoint:
             if self.break_on_return:
                 self._block_if_condition_met(args, kwargs)
 
+            # Best practice is not to hold onto stackframe longer
+            # than it is needed.
+            self.stackframe = None
             return result
 
         self.original = f
