@@ -2,6 +2,7 @@
 
 import datetime
 import math
+import six
 import sys
 import threading
 import time
@@ -71,7 +72,7 @@ class InstrumentManager(object):
 
     def _apply(self):
         seen_instruments = {}
-        for spec_id, doc in self.specs.iteritems():
+        for spec_id, doc in six.iteritems(self.specs):
             full_id = "%s:%s" % (self.short_id, spec_id)
             target = doc["target"]
             seen_instruments[full_id] = target
