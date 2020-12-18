@@ -5,6 +5,7 @@ import datetime
 import functools
 import gc
 import linecache
+import six
 import sys
 import time
 import traceback
@@ -37,7 +38,7 @@ def attach_to(target):
 
 
 def start_all():
-    for probe in active_probes.itervalues():
+    for probe in six.itervalues(active_probes):
         probe.start()
 
 
@@ -105,7 +106,7 @@ class FunctionProbe(object):
 
             hotspots = HotspotsFinder()
             instruments_by_event = {"call": [], "return": [], "end": []}
-            for I in self.instruments.itervalues():
+            for I in six.itervalues(self.instruments):
                 if I.expires and now > I.expires:
                     continue
                 if I.check_call(self, *args, **kwargs):
@@ -351,12 +352,12 @@ class FunctionProbe(object):
         """Apply self.patches. Safe to call after already started."""
         if not self.patches:
             self.make_patches()
-        for p in self.patches.itervalues():
+        for p in six.itervalues(self.patches):
             if not hasattr(p, "is_local"):
                 p.start()
 
     def stop(self):
-        for p in self.patches.itervalues():
+        for p in six.itervalues(self.patches):
             try:
                 p.stop()
             except RuntimeError:
@@ -426,11 +427,11 @@ class HotspotsFinder(object):
         self.__call__(event=None)
 
         if self.calls:
-            worst = max(((call[2], lineno) for lineno, call in self.calls.iteritems()))
+            worst = max(((call[2], lineno) for lineno, call in six.iteritems(self.calls)))
             self.worst = CallTime(*worst, source=self.source(worst[1]))
 
             slowest = max(
-                ((call[1], lineno) for lineno, call in self.calls.iteritems())
+                ((call[1], lineno) for lineno, call in six.iteritems(self.calls))
             )
             self.slowest = CallTime(*slowest, source=self.source(slowest[1]))
         else:

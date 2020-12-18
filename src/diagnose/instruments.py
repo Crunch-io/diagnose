@@ -2,6 +2,7 @@
 
 import datetime
 import sys
+import six
 
 try:
     from statsd import statsd
@@ -86,7 +87,7 @@ class Instrument(object):
         if tag_expr:
             t = self.evaluate(tag_expr, _globals, _locals)
             if isinstance(t, dict):
-                t = ["%s:%s" % pair for pair in t.iteritems()]
+                t = ["%s:%s" % pair for pair in six.iteritems(t)]
             if not isinstance(t, list):
                 raise TypeError("Cannot send non-list of tags: %s" % (t,))
             tags = tags + t
