@@ -170,7 +170,7 @@ class StatsdInstrumentBase(Instrument):
         if v is None:
             return
 
-        if not isinstance(v, (int, float, long)):
+        if not isinstance(v, six.integer_types + (int,)):
             v = str(v)
             if len(v) > self.MAX_CHARS:
                 v = v[: self.MAX_CHARS] + "..."
