@@ -115,8 +115,8 @@ class InstrumentManager(object):
                 self.mark(spec_id, doc, exception=True)
 
         # Remove defunct instruments, probes
-        for target, probe in probes.active_probes.items():
-            for full_id, instrument in probe.instruments.items():
+        for target, probe in list(probes.active_probes.items()):
+            for full_id, instrument in list(probe.instruments.items()):
                 # Remove any instrument from a probe if this manager
                 # thinks it doesn't apply to the same target anymore.
                 if full_id.startswith(self.short_id):
