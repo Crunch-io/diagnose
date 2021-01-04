@@ -4,6 +4,8 @@ import sys
 import time
 import types
 from collections import defaultdict
+
+import six
 from mock import patch
 from six.moves import xrange
 
@@ -261,7 +263,7 @@ class TestHotspotValues(ProbeTestCase):
             )
             assert hard_work(0, 10000) == 1000
             assert [tags for tags, value in i.log] == [
-                ["source:34:    summary = len([x for x in output if x % 10 == 0])\n"]
+                ["source:35:    summary = len([x for x in output if x % 10 == 0])\n"]
             ]
             assert [type(value) for tags, value in i.log] == [float]
         finally:
@@ -315,12 +317,15 @@ class TestTargets(ProbeTestCase):
         p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
         with self.assertRaises(AttributeError) as exc:
             p.start()
-        print(exc.exception)
-        print(exc.exception.args)
-        print(exc.exception)
+
+        if six.PY2:
+            expected_message = "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+        else:
+            expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
+
         assert (
             exc.exception.args[0]
-            == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+            == expected_message
         )
 
     def test_target_copies(self):
@@ -380,20 +385,32 @@ class TestTargets(ProbeTestCase):
             # The next problem is that, while our patch is live,
             # if t2 goes out of its original scope, we've still got
             # a reference to it in our mock patch.
-            self.assertEqual(
-                owner_types(func_2),
-                {
+            if six.PY2:
+                expected_result = {
                     types.ModuleType: 2,
                     Entity: 2,
                     probes.WeakMethodPatch: 3,
                     MockPatch: 1,
                     probes.DictPatch: 1,
-                },
-            )
-            del t2
+                }
+            else:
+                expected_result =  defaultdict(int, {
+                      types.FunctionType: 1,
+                      types.ModuleType: 2,
+                      MockPatch: 1,
+                      diagnose.probes.WeakMethodPatch: 4,
+                      diagnose.probes.DictPatch: 1,
+                      Entity: 2
+                })
+
             self.assertEqual(
                 owner_types(func_2),
-                {
+                expected_result,
+            )
+            del t2
+
+            if six.PY2:
+                expected_result = {
                     types.ModuleType: 2,
                     # The number of Entity references MUST decrease by 1.
                     Entity: 1,
@@ -401,7 +418,20 @@ class TestTargets(ProbeTestCase):
                     probes.WeakMethodPatch: 2,
                     MockPatch: 1,
                     probes.DictPatch: 1,
-                },
+                }
+            else:
+                expected_result = defaultdict(int, {
+                      types.FunctionType: 1,
+                      types.ModuleType: 2,
+                      MockPatch: 1,
+                      diagnose.probes.WeakMethodPatch: 3,
+                      diagnose.probes.DictPatch: 1,
+                      Entity: 1
+                })
+
+            self.assertEqual(
+                owner_types(func_2),
+                expected_result,
             )
         finally:
             probe.stop()
