@@ -1,15 +1,12 @@
 import datetime
-from cStringIO import StringIO
 import sys
-
 from mock import call, patch
+from six.moves import cStringIO, StringIO
 
 import diagnose
 from diagnose import probes
 from diagnose.test_fixtures import a_func, Thing
-
 from . import ProbeTestCase
-
 
 registry = {}
 
@@ -211,7 +208,7 @@ class TestMultipleInstruments(ProbeTestCase):
                 spec["target"] = target2
                 mgr.apply()
                 assert (
-                    probes.active_probes[target2].instruments.values()[0].name
+                    list(probes.active_probes[target2].instruments.values())[0].name
                     == "a_func"
                 )
                 # The old target MUST be removed from the probes

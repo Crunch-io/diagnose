@@ -1,11 +1,11 @@
-from collections import defaultdict
 import datetime
 import gc
 import sys
 import time
 import types
-
+from collections import defaultdict
 from mock import patch
+from six.moves import xrange
 
 try:
     from mock import _patch as MockPatch
@@ -42,7 +42,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == ["<ok>"]
+            assert list(p.instruments.values())[0].results == ["<ok>"]
 
     def test_return_event_elapsed(self):
         with self.probe(
@@ -55,7 +55,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results[0] < elapsed
+            assert list(p.instruments.values())[0].results[0] < elapsed
 
     def test_return_event_locals(self):
         with self.probe(
@@ -66,7 +66,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [
+            assert list(p.instruments.values())[0].results == [
                 [
                     "arg",
                     "args",
@@ -132,14 +132,14 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [(t, "ok")]
+            assert list(p.instruments.values())[0].results == [(t, "ok")]
 
     def test_call_event_elapsed(self):
         with self.probe(
             "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed", event="call"
         ) as p:
             errs = []
-            p.instruments.values()[0].handle_error = lambda probe: errs.append(
+            list(p.instruments.values())[0].handle_error = lambda probe: errs.append(
                 sys.exc_info()[1].args[0] if sys.exc_info()[1].args else ""
             )
             result = Thing().do("ok")
@@ -147,7 +147,7 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST NOT have logged an entry...
-            assert p.instruments.values()[0].results == []
+            assert list(p.instruments.values())[0].results == []
             # ...but the instrument MUST have handled the error:
             assert errs == ["name 'elapsed' is not defined"]
 
@@ -164,7 +164,7 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [
+            assert list(p.instruments.values())[0].results == [
                 ["arg", "args", "frame", "kwargs", "now", "self", "start"]
             ]
 
@@ -315,6 +315,9 @@ class TestTargets(ProbeTestCase):
         p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
         with self.assertRaises(AttributeError) as exc:
             p.start()
+        print(exc.exception)
+        print(exc.exception.args)
+        print(exc.exception)
         assert (
             exc.exception.args[0]
             == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
@@ -418,7 +421,7 @@ class TestTargets(ProbeTestCase):
             assert funcs["orig"]("ahem") == "aha!"
 
             # The probe MUST have logged an entry
-            i = p.instruments.values()[0]
+            i = list(p.instruments.values())[0]
             assert i.results == ["aha!"]
 
             i.log = []
@@ -440,7 +443,7 @@ class TestTargets(ProbeTestCase):
             "test", "quantile", "diagnose.test_fixtures.Thing.static", "result"
         ) as p:
             assert Thing().static() == 15
-            assert p.instruments.values()[0].results == [15]
+            assert list(p.instruments.values())[0].results == [15]
 
     def test_patch_wrapped_function_end_event(self):
         probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
@@ -471,7 +474,7 @@ class TestTargets(ProbeTestCase):
             "test", "quantile", "diagnose.test_fixtures.Thing.exists", "result"
         ) as p:
             assert Thing().exists is True
-            assert p.instruments.values()[0].results == [True]
+            assert list(p.instruments.values())[0].results == [True]
             assert Thing.exists is not old_prop
 
         assert Thing().exists is True
@@ -493,10 +496,10 @@ class TestProbeCheckCall(ProbeTestCase):
                 custom={"valid_ids": [1, 2, 3]},
             ) as p:
                 assert Thing().do("ok", user_id=2) == "<ok>"
-                assert p.instruments.values()[0].results == ["<ok>"]
+                assert list(p.instruments.values())[0].results == ["<ok>"]
 
                 assert Thing().do("not ok", user_id=10004) == "<not ok>"
-                assert p.instruments.values()[0].results == ["<ok>"]
+                assert list(p.instruments.values())[0].results == ["<ok>"]
 
 
 class TestHardcodedProbes(ProbeTestCase):

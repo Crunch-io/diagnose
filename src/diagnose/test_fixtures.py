@@ -1,4 +1,5 @@
 import functools
+from six.moves import xrange
 
 import diagnose
 
