@@ -309,7 +309,7 @@ def owner_types(obj):
             if getattr(parent, "__dict__", None) is ref:
                 num_instances[type(parent)] += 1
                 break
-    return num_instances
+    return dict(num_instances)
 
 
 class TestTargets(ProbeTestCase):
@@ -350,6 +350,17 @@ class TestTargets(ProbeTestCase):
         registry["in_a_dict"] = func_2
         self.assertTrue(registry["in_a_dict"] is old_local_func_2)
 
+        # Before attaching the probe, there should be some references to func_2,
+        # but not our patch objects.
+        expected_result = {
+            types.ModuleType: 2,
+            Entity: 2
+        }
+        self.assertEqual(
+            owner_types(func_2),
+            expected_result,
+        )
+
         probe = probes.attach_to("diagnose.test_fixtures.func_2")
         try:
             probe.start()
@@ -385,54 +396,32 @@ class TestTargets(ProbeTestCase):
             # The next problem is that, while our patch is live,
             # if t2 goes out of its original scope, we've still got
             # a reference to it in our mock patch.
-            if six.PY2:
-                expected_result = {
-                    types.ModuleType: 2,
-                    Entity: 2,
-                    probes.WeakMethodPatch: 3,
-                    MockPatch: 1,
-                    probes.DictPatch: 1,
-                }
-            else:
-                expected_result =  defaultdict(int, {
-                      types.FunctionType: 1,
-                      types.ModuleType: 2,
-                      MockPatch: 1,
-                      diagnose.probes.WeakMethodPatch: 4,
-                      diagnose.probes.DictPatch: 1,
-                      Entity: 2
-                })
+            expected_result = {
+                # These referred to func_2 before our probe was attached...
+                types.ModuleType: 2,
+                Entity: 2,
+                # ...and these are added by attaching the probe:
+                # a) the target that we passed to probes.attach_to()
+                MockPatch: 1,
+                # b) 3 "methods": t.add13, t2.add13, and test_probes.func_2
+                probes.WeakMethodPatch: 3,
+                # c) the registry dict.
+                probes.DictPatch: 1,
+            }
+            assert owner_types(func_2) == expected_result
 
-            self.assertEqual(
-                owner_types(func_2),
-                expected_result,
-            )
+            # Delete one of our references.
             del t2
-
-            if six.PY2:
-                expected_result = {
-                    types.ModuleType: 2,
-                    # The number of Entity references MUST decrease by 1.
-                    Entity: 1,
-                    # The number of WeakMethodPatch references MUST decrease by 1.
-                    probes.WeakMethodPatch: 2,
-                    MockPatch: 1,
-                    probes.DictPatch: 1,
-                }
-            else:
-                expected_result = defaultdict(int, {
-                      types.FunctionType: 1,
-                      types.ModuleType: 2,
-                      MockPatch: 1,
-                      diagnose.probes.WeakMethodPatch: 3,
-                      diagnose.probes.DictPatch: 1,
-                      Entity: 1
-                })
-
-            self.assertEqual(
-                owner_types(func_2),
-                expected_result,
-            )
+            expected_result = {
+                types.ModuleType: 2,
+                # The number of Entity references MUST decrease by 1.
+                Entity: 1,
+                MockPatch: 1,
+                # The number of WeakMethodPatch references MUST decrease by 1.
+                probes.WeakMethodPatch: 2,
+                probes.DictPatch: 1,
+            }
+            assert owner_types(func_2) == expected_result
         finally:
             probe.stop()
 

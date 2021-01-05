@@ -284,6 +284,11 @@ class FunctionProbe(object):
             for parent in gc.get_referrers(ref):
                 if parent is _resolved_target or parent is primary_patch:
                     continue
+                if parent is probe_wrapper:
+                    # In Python 3.2+, `@functools.wraps(base)` above sets
+                    # `wrapper.__wrapped__ = wrapped`. We don't want to
+                    # patch that with itself!
+                    continue
 
                 if getattr(parent, "__dict__", None) is ref:
                     # An attribute of a module or class or instance.
@@ -451,7 +456,7 @@ class WeakMethodPatch(object):
     then replaces the given attribute of that object with the new value.
     On stop/__exit__, replaces the same attribute with the previous value.
 
-    Used by FunctionPatch to replace references to functions which appear in
+    Used by FunctionProbe to replace references to functions which appear in
     modules, classes, or other objects. Weak references are used internally
     so that, if the object is removed from that module etc (has no more strong
     references), then the patch is automatically abandoned.
@@ -461,6 +466,9 @@ class WeakMethodPatch(object):
         self.getter = getter
         self.attribute = attribute
         self.new = new
+
+    def __repr__(self):
+        return "%s(%s, %s, %s)" % (self.__class__.__name__, self.getter, self.attribute, self.new)
 
     def get_original(self):
         target = self.getter()
@@ -529,7 +537,7 @@ class DictPatch(object):
     identified by the given key with a new object. On stop/__exit__,
     replaces the same key with the previous object.
 
-    Used by FunctionPatch to replace references to functions which appear
+    Used by FunctionProbe to replace references to functions which appear
     in any dictionary, such as a function registry.
     """
 
