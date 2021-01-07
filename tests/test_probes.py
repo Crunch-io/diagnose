@@ -1,11 +1,13 @@
-from collections import defaultdict
 import datetime
 import gc
 import sys
 import time
 import types
+from collections import defaultdict
 
+import six
 from mock import patch
+from six.moves import xrange
 
 try:
     from mock import _patch as MockPatch
@@ -42,7 +44,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == ["<ok>"]
+            assert list(p.instruments.values())[0].results == ["<ok>"]
 
     def test_return_event_elapsed(self):
         with self.probe(
@@ -55,7 +57,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results[0] < elapsed
+            assert list(p.instruments.values())[0].results[0] < elapsed
 
     def test_return_event_locals(self):
         with self.probe(
@@ -66,7 +68,7 @@ class TestReturnEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [
+            assert list(p.instruments.values())[0].results == [
                 [
                     "arg",
                     "args",
@@ -132,14 +134,14 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [(t, "ok")]
+            assert list(p.instruments.values())[0].results == [(t, "ok")]
 
     def test_call_event_elapsed(self):
         with self.probe(
             "test", "do", "diagnose.test_fixtures.Thing.do", "elapsed", event="call"
         ) as p:
             errs = []
-            p.instruments.values()[0].handle_error = lambda probe: errs.append(
+            list(p.instruments.values())[0].handle_error = lambda probe: errs.append(
                 sys.exc_info()[1].args[0] if sys.exc_info()[1].args else ""
             )
             result = Thing().do("ok")
@@ -147,7 +149,7 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST NOT have logged an entry...
-            assert p.instruments.values()[0].results == []
+            assert list(p.instruments.values())[0].results == []
             # ...but the instrument MUST have handled the error:
             assert errs == ["name 'elapsed' is not defined"]
 
@@ -164,7 +166,7 @@ class TestCallEvent(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert p.instruments.values()[0].results == [
+            assert list(p.instruments.values())[0].results == [
                 ["arg", "args", "frame", "kwargs", "now", "self", "start"]
             ]
 
@@ -261,7 +263,7 @@ class TestHotspotValues(ProbeTestCase):
             )
             assert hard_work(0, 10000) == 1000
             assert [tags for tags, value in i.log] == [
-                ["source:34:    summary = len([x for x in output if x % 10 == 0])\n"]
+                ["source:35:    summary = len([x for x in output if x % 10 == 0])\n"]
             ]
             assert [type(value) for tags, value in i.log] == [float]
         finally:
@@ -307,7 +309,7 @@ def owner_types(obj):
             if getattr(parent, "__dict__", None) is ref:
                 num_instances[type(parent)] += 1
                 break
-    return num_instances
+    return dict(num_instances)
 
 
 class TestTargets(ProbeTestCase):
@@ -315,9 +317,15 @@ class TestTargets(ProbeTestCase):
         p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
         with self.assertRaises(AttributeError) as exc:
             p.start()
+
+        if six.PY2:
+            expected_message = "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+        else:
+            expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
+
         assert (
             exc.exception.args[0]
-            == "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+            == expected_message
         )
 
     def test_target_copies(self):
@@ -341,6 +349,17 @@ class TestTargets(ProbeTestCase):
 
         registry["in_a_dict"] = func_2
         self.assertTrue(registry["in_a_dict"] is old_local_func_2)
+
+        # Before attaching the probe, there should be some references to func_2,
+        # but not our patch objects.
+        expected_result = {
+            types.ModuleType: 2,
+            Entity: 2
+        }
+        self.assertEqual(
+            owner_types(func_2),
+            expected_result,
+        )
 
         probe = probes.attach_to("diagnose.test_fixtures.func_2")
         try:
@@ -377,29 +396,32 @@ class TestTargets(ProbeTestCase):
             # The next problem is that, while our patch is live,
             # if t2 goes out of its original scope, we've still got
             # a reference to it in our mock patch.
-            self.assertEqual(
-                owner_types(func_2),
-                {
-                    types.ModuleType: 2,
-                    Entity: 2,
-                    probes.WeakMethodPatch: 3,
-                    MockPatch: 1,
-                    probes.DictPatch: 1,
-                },
-            )
+            expected_result = {
+                # These referred to func_2 before our probe was attached...
+                types.ModuleType: 2,
+                Entity: 2,
+                # ...and these are added by attaching the probe:
+                # a) the target that we passed to probes.attach_to()
+                MockPatch: 1,
+                # b) 3 "methods": t.add13, t2.add13, and test_probes.func_2
+                probes.WeakMethodPatch: 3,
+                # c) the registry dict.
+                probes.DictPatch: 1,
+            }
+            assert owner_types(func_2) == expected_result
+
+            # Delete one of our references.
             del t2
-            self.assertEqual(
-                owner_types(func_2),
-                {
-                    types.ModuleType: 2,
-                    # The number of Entity references MUST decrease by 1.
-                    Entity: 1,
-                    # The number of WeakMethodPatch references MUST decrease by 1.
-                    probes.WeakMethodPatch: 2,
-                    MockPatch: 1,
-                    probes.DictPatch: 1,
-                },
-            )
+            expected_result = {
+                types.ModuleType: 2,
+                # The number of Entity references MUST decrease by 1.
+                Entity: 1,
+                MockPatch: 1,
+                # The number of WeakMethodPatch references MUST decrease by 1.
+                probes.WeakMethodPatch: 2,
+                probes.DictPatch: 1,
+            }
+            assert owner_types(func_2) == expected_result
         finally:
             probe.stop()
 
@@ -418,7 +440,7 @@ class TestTargets(ProbeTestCase):
             assert funcs["orig"]("ahem") == "aha!"
 
             # The probe MUST have logged an entry
-            i = p.instruments.values()[0]
+            i = list(p.instruments.values())[0]
             assert i.results == ["aha!"]
 
             i.log = []
@@ -440,7 +462,7 @@ class TestTargets(ProbeTestCase):
             "test", "quantile", "diagnose.test_fixtures.Thing.static", "result"
         ) as p:
             assert Thing().static() == 15
-            assert p.instruments.values()[0].results == [15]
+            assert list(p.instruments.values())[0].results == [15]
 
     def test_patch_wrapped_function_end_event(self):
         probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
@@ -471,7 +493,7 @@ class TestTargets(ProbeTestCase):
             "test", "quantile", "diagnose.test_fixtures.Thing.exists", "result"
         ) as p:
             assert Thing().exists is True
-            assert p.instruments.values()[0].results == [True]
+            assert list(p.instruments.values())[0].results == [True]
             assert Thing.exists is not old_prop
 
         assert Thing().exists is True
@@ -493,10 +515,10 @@ class TestProbeCheckCall(ProbeTestCase):
                 custom={"valid_ids": [1, 2, 3]},
             ) as p:
                 assert Thing().do("ok", user_id=2) == "<ok>"
-                assert p.instruments.values()[0].results == ["<ok>"]
+                assert list(p.instruments.values())[0].results == ["<ok>"]
 
                 assert Thing().do("not ok", user_id=10004) == "<not ok>"
-                assert p.instruments.values()[0].results == ["<ok>"]
+                assert list(p.instruments.values())[0].results == ["<ok>"]
 
 
 class TestHardcodedProbes(ProbeTestCase):
