@@ -208,7 +208,7 @@ class TestMultipleInstruments(ProbeTestCase):
                 spec["target"] = target2
                 mgr.apply()
                 assert (
-                    list(probes.active_probes[target2].instruments.values())[0].name
+                    next(iter(probes.active_probes[target2].instruments.values())).name
                     == "a_func"
                 )
                 # The old target MUST be removed from the probes
