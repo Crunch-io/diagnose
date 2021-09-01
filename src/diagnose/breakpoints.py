@@ -72,6 +72,52 @@ For example:
         bp.wait()             # wait for that thread to hit the function
 
         assert "server thread failed" in error_logs
+
+The `do` class
+--------------
+
+Breakpoints have more power, but can be confusing because you have to
+declare what to run after you declare where it should block. The `do` class
+allows you to reverse that order, and use a more English-like chain of
+adjustments, with less boilerplate. It assumes you want to do the most
+common thing, which is start a thread running some function and then wait
+for it to hit the Breakpoint. For example, instead of:
+
+    with Breakpoint("path.to.obj.func", event="return") as bp:
+        bp.start_thread(foo)
+        bp.wait()
+        etc
+
+...this class lets you write:
+
+    with do(foo).until("path.to.obj.func").returns:
+        etc
+
+Entering the context starts a thread running the given function and will
+wait() for the Breakpoint to be hit. Exiting the context will join()
+the thread.
+
+Any of the functions `until`, `beyond`, `error_on`, `where`, and the `returns` property
+all return the do() instance itself, so it doesn't matter which one comes last;
+they can all be used in a `with` block, like so:
+
+    t = do(foo)
+    with t.until("path.to.obj.func").returns:
+        etc
+
+This is especially handy for another common case: gathering results. Every do()
+instance stores the output in self.results automatically, even if you call it
+more than once:
+
+    inputs = ["a", "b"]
+    t = do(len, inputs)
+    with t:
+        pass
+    inputs.append("c")
+    with t:
+        pass
+    assert t.results == [2, 3]
+
 """
 
 import functools
@@ -117,15 +163,16 @@ class Breakpoint:
             "return" to fire when the function exits.
         condition:
             None to always fire, or a callable that takes the same args
-            as the patched function and returns True to fire, False to not.
+            as the patched target and returns True to fire, False to not.
             Alternately, it may be an int or list of ints, in which case
             it will fire on those numbered calls.
         timeout:
             The default time, in seconds, to wait().
         fire:
             None (the default) to take no action when the Breakpoint is hit.
-            Pass a callable to perform some other action. Use Breakpoint.block()
-            or Breakpoint.error() to use those builtin actions.
+            Pass a no-arg callable to perform some other action.
+            Use Breakpoint.block() or Breakpoint.error() to use
+            the builtin actions.
         """
         self.target = target
         self.event = event
@@ -138,7 +185,9 @@ class Breakpoint:
         self.calls = []
         self.fire = fire
 
-    def make_wrapper(self, base):
+    def _make_wrapper(self, base):
+        """The internal action for a blocking Breakpoint."""
+
         @functools.wraps(base)
         def breakpoint_wrapper(*args, **kwargs):
             self.stackframe = inspect.currentframe()
@@ -188,7 +237,7 @@ class Breakpoint:
             patch_all = self.patch_all_referrers
             if patch_all is None:
                 patch_all = isinstance(self.target, six.string_types)
-            self.patches = patchlib.make_patches(self.target, self.make_wrapper, patch_all_referrers=patch_all)
+            self.patches = patchlib.make_patches(self.target, self._make_wrapper, patch_all_referrers=patch_all)
 
         for p in self.patches:
             p.start()
@@ -248,9 +297,7 @@ class Breakpoint:
         t.start()
 
     def join(self):
-        """
-        Waits for all the threads to complete.
-        """
+        """Wait for all threads started by this instance to complete."""
         for thread in self._started_threads:
             thread.join()
 
@@ -309,6 +356,7 @@ class Breakpoint:
         return self
 
     def _fire_blocking(self):
+        """The internal action for a blocking Breakpoint."""
         start = time.time()
         timeout = self.timeout
         self.blocked = True
@@ -345,13 +393,14 @@ class Breakpoint:
         return self
 
     def _fire_erroring(self):
+        """The internal action for an erroring Breakpoint."""
         raise self.exception
 
 
 class do:
+    """A helper class to run concurrent functions with Breakpoints."""
 
     breakpoint = None
-    _thread = None
 
     def __init__(self, func, *args, **kwargs):
         self.func = func
@@ -361,6 +410,7 @@ class do:
         self.results = []
 
     def until(self, target, timeout=None):
+        """Set a blocking Breakpoint for the given target."""
         self.breakpoint.target = target
         self.breakpoint.fire = self.breakpoint._fire_blocking
         if timeout is not None:
@@ -368,12 +418,14 @@ class do:
         return self
 
     def beyond(self, target, timeout=None):
+        """Set a non-blocking Breakpoint for the given target."""
         self.breakpoint.target = target
         if timeout is not None:
             self.breakpoint.timeout = timeout
         return self
 
     def error_on(self, target, exception, timeout=None):
+        """Set an erroring Breakpoint for the given target."""
         self.breakpoint.target = target
         self.breakpoint.exception = exception
         self.breakpoint.fire = self.breakpoint._fire_erroring
@@ -383,12 +435,14 @@ class do:
 
     @property
     def returns(self):
+        """Set the Breakpoint to fire when the target returns, not when called."""
         if self.breakpoint is None:
             raise RuntimeError("You must call do().until(), .beyond(), or .error_on() before declaring .returns.")
         self.breakpoint.event = "return"
         return self
 
     def where(self, condition):
+        """Set the Breakpoint to fire only when the given condition is met."""
         self.breakpoint.condition = condition
         return self
 
@@ -405,4 +459,5 @@ class do:
         self.results.append(self.func(*self.args, **self.kwargs))
 
     def release(self):
+        """Release any threads blocked on the Breakpoint."""
         self.breakpoint.release()
