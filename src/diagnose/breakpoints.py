@@ -1,117 +1,167 @@
-"""Simulate concurrent schedules by pausing execution at a given function."""
+"""A tool to detect and synchronize execution or simulate errors during tests.
+
+Use a Breakpoint to detect concurrent calls, simulate deterministic
+interleavings of operations, or throw internal errors which would
+otherwise be left to concurrency accidents or complicated calls
+to sleep(). All of this can be done entirely in tests, without infecting
+production code with a bunch of scaffolding.
+
+When a Breakpoint is hit, its condition is checked (if any), and the True
+or False result is appended to its .calls. Callpoints without a condition
+append True every time they are called. Test code may call bp.wait(),
+which blocks until there has been at least one (conditional) call. For example:
+
+    with Breakpoint("path.to.obj.func", event="return") as bp:
+        bp.start_thread(foo)  # start running foo in a thread
+        bp.wait()             # wait for that thread to hit the function
+
+        assert some_effect_that_func_causes()
+
+If the system somehow hits the breakpoint before the test calls wait(),
+then wait() simply returns immediately.
+If no calls happen within the timeout, wait() throws a RuntimeError.
+If test code does not call wait(), and the "with" block exits with no calls
+recorded, it will throw a RuntimeError. You can use this to assert calls even
+in completely synchronous code.
+
+Breakpoints may be conditional based on the arguments being passed.
+Set bp.condition to a callable which takes the same arguments as the
+target function; if it returns True, the call is recorded as successful.
+Alternately, the condition may be an int or list of ints, in which case
+it will be considered successful on those numbered calls (starting from 0).
+
+When a breakpoint is hit, the breakpoint's "stackframe" attribute is
+set to the current frame. Using this, you can inspect the call
+stack or function arguments while inside the "with" block.
+
+Blocking Breakpoints
+--------------------
+
+A blocking Breakpoint does not merely record calls, but blocks the caller
+on successful calls until released. This lets it behave like a semaphore,
+allowing a test and the system (the thread being tested) to synchronize
+their execution. The test calls bp.wait(), which blocks; when the system
+hits the breakpoint, they switch: the system blocks and the test unblocks.
+While the system is blocked, the test is free to inspect or alter state
+without fear.
+
+For example:
+
+    with Breakpoint.block((obj, funcname)) as bp:
+        bp.start_thread(foo)  # start running foo in a thread
+        bp.wait()             # wait for that thread to hit the function
+
+        assert foo.is_running
+        foo.do_something()
+
+The test may unblock the system by explicitly calling bp.release(),
+or just waiting for the "with" block to exit. If neither happens
+within the timeout, the system thread throws RuntimeError.
+
+Erroring Breakpoints
+--------------------
+
+An erroring Breakpoint is initialized with an exception instance, which is raised
+whenever the condition is met. Use this to simulate errors inside concurrent
+code at specific points.
+
+For example:
+
+    with Breakpoint.error("path.to.obj.func") as bp:
+        bp.start_thread(foo)  # start running foo in a thread
+        bp.wait()             # wait for that thread to hit the function
+
+        assert "server thread failed" in error_logs
+"""
+
 import functools
+import inspect
 import threading
 import time
-import inspect
+
+import six
+
+from diagnose import patchlib
+
 
 omitted = object()
 
 
 class Breakpoint:
-    """A tool to synchronize execution or simulate errors during tests.
+    """A tool to detect and synchronize execution or simulate errors during tests."""
 
-    Use a Breakpoint in tests to simulate deterministic interleavings of
-    operations which would otherwise be left to concurrency accidents
-    or complicated calls to sleep. You can also simulate internal errors
-    with the `throw` argument. All of this can be done entirely in tests,
-    without infecting production code with a bunch of scaffolding.
+    check_interval = 0.1
+    """The period, in seconds, at which to poll for timeout."""
 
-    A Breakpoint acts like a semaphore, allowing a test and the system
-    (the thread being tested) to synchronize their execution. The test calls
-    bp.wait(), which blocks; when the system hits the breakpoint, they switch:
-    the system blocks and the test unblocks. While the system is blocked,
-    the test is free to inspect or alter state without fear. For example:
-
-        with Breakpoint(obj, funcname) as bp:
-            bp.start_thread(foo)  # start running foo in a thread
-            bp.wait()             # wait for that thread to hit the function
-
-            assert foo.is_running
-            foo.set_interrupt()
-
-    If the system somehow hits the breakpoint before the test calls wait(),
-    then wait() simply returns immediately. If the system doesn't hit
-    the breakpoint within the timeout, wait() throws a RuntimeError.
-
-    The test may unblock the system by explicitly calling bp.release(),
-    or just waiting for the "with" block to exit (if neither happens
-    within the timeout, the system thread throws RuntimeError).
-
-    Breakpoints may be conditional based on the arguments being passed.
-    Set bp.condition to a callable which takes the same arguments as the
-    breakpoint function; if it returns True, the call blocks and control
-    is passed back to the test thread; if False, the call proceeds normally.
-    Alternately, the condition may be an int or list of ints, in which case
-    it will break on those numbered calls.
-
-    If the `throw` argument is provided, it should be an exception instance,
-    which is raised whenever the condition is met instead of blocking.
-    Use this to simulate errors at specific points rather than simulating
-    deterministic interleaving of operations.
-
-    When a breakpoint is hit, the breakpoints "stackframe" attribute is
-    set to the current frame. Using this, you can inspect the call
-    stack or function arguments.
-    """
+    patch_all_referrers = None
+    """If True, all references to the given target will be patched.
+    If False, only the given reference will be patched. If None
+    (the default), all references will be patched when `target`
+    is a string (dotted-import path), but only the given reference
+    will be patched if `target` is an (object, attribute-name) tuple."""
 
     def __init__(
         self,
-        obj,
-        funcname,
+        target,
+        event="call",
         condition=None,
         timeout=10.0,
-        break_on_return=False,
-        throw=None,
-        check_interval=0.1,
+        fire=None,
     ):
         """
-        obj:
-            Class or object to be patched
-        funcname:
-            str: Name of method/function on that object
+        target:
+            Function to be patched: may be the dotted-import path as a string
+            or an (obj, funcname) tuple.
+        event:
+            "call" (default) to fire when the function is entered,
+            "return" to fire when the function exits.
         condition:
-            None to always break when function is called, or callable that
-            takes same args as patched function and returns True to break,
-            False to keep going. Alternately, it may be an int or list of
-            ints, in which case it will break on those numbered calls.
-        break_on_return:
-            False (default) to break when the function is entered,
-            True to break when the function exits.
+            None to always fire, or a callable that takes the same args
+            as the patched function and returns True to fire, False to not.
+            Alternately, it may be an int or list of ints, in which case
+            it will fire on those numbered calls.
+        timeout:
+            The default time, in seconds, to wait().
+        fire:
+            None (the default) to take no action when the Breakpoint is hit.
+            Pass a callable to perform some other action. Use Breakpoint.block()
+            or Breakpoint.error() to use those builtin actions.
         """
-        self.blocked = 0
+        self.target = target
+        self.event = event
         self.condition = condition
         self.timeout = timeout
-        self.break_on_return = break_on_return
-        self.throw = throw
-        self.check_interval = check_interval
+
         self._started_threads = []
         self.stackframe = None
 
-        self.obj = obj
-        self.funcname = funcname
         self.calls = []
-        f = getattr(obj, funcname)
+        self.fire = fire
 
-        @functools.wraps(f)
+    def make_wrapper(self, base):
+        @functools.wraps(base)
         def breakpoint_wrapper(*args, **kwargs):
             self.stackframe = inspect.currentframe()
-            if not self.break_on_return:
-                self._block_if_condition_met(args, kwargs)
+            if self.event == "call":
+                if self._condition_met(args, kwargs):
+                    if self.fire is not None:
+                        self.fire()
 
-            result = f(*args, **kwargs)
+            result = base(*args, **kwargs)
 
-            if self.break_on_return:
-                self._block_if_condition_met(args, kwargs)
+            if self.event == "return":
+                if self._condition_met(args, kwargs):
+                    if self.fire is not None:
+                        self.fire()
 
             # Best practice is not to hold onto stackframe longer
             # than it is needed.
             self.stackframe = None
             return result
 
-        self.original = f
-        self.wrapper = breakpoint_wrapper
+        return breakpoint_wrapper
 
-    def _block_if_condition_met(self, args, kwargs):
+    def _condition_met(self, args, kwargs):
         if self.condition is None:
             met = True
         elif isinstance(self.condition, int):
@@ -125,70 +175,75 @@ class Breakpoint:
                 "Breakpoint.condition must be None, an int or list of ints, or a callable."
             )
         self.calls.append(met)
-
-        if met:
-            if self.throw is not None:
-                raise self.throw
-
-            start = time.time()
-            timeout = self.timeout
-            self.blocked += 1
-            while self.blocked:
-                if timeout is not None and time.time() - start > timeout:
-                    raise RuntimeError(
-                        "Breakpoint on %s.%s timed out after %s seconds."
-                        % (self.obj, self.funcname, timeout)
-                    )
-                time.sleep(self.check_interval)
+        return met
 
     def __enter__(self):
         self.calls = []
         self._started_threads = []
-        setattr(self.obj, self.funcname, self.wrapper)
-        self.blocked = 0
+        self.release()
+
+        if self.target is None:
+            self.patches = []
+        else:
+            patch_all = self.patch_all_referrers
+            if patch_all is None:
+                patch_all = isinstance(self.target, six.string_types)
+            self.patches = patchlib.make_patches(self.target, self.make_wrapper, patch_all_referrers=patch_all)
+
+        for p in self.patches:
+            p.start()
+
         return self
 
     def __exit__(self, type, value, traceback):
-        setattr(self.obj, self.funcname, self.original)
-        self.blocked = 0
-        for t in self._started_threads:
+        for p in self.patches:
+            p.stop()
+
+        self.release()
+
+        while self._started_threads:
+            t = self._started_threads.pop(0)
             t.join()
-        self._started_threads = []
 
         if type is not None:
             # There was already an error, don't suppress it.
             return False
 
-        if isinstance(self.condition, int):
-            if len(self.calls) <= self.condition or not self.calls[self.condition]:
-                raise AssertionError(
-                    "Breakpoint condition on %s was not met for iteration %s."
-                    % (self.funcname, self.condition)
-                )
-        elif isinstance(self.condition, (set, tuple, list)):
-            not_called = [
-                c for c in self.condition if len(self.calls) <= c or not self.calls[c]
-            ]
-            if not_called:
-                raise AssertionError(
-                    "Breakpoint condition on %s was not met for iterations %s."
-                    % (self.funcname, not_called)
-                )
-        else:
-            if not any(self.calls):
-                raise AssertionError(
-                    "Breakpoint condition on %s was not met." % (self.funcname,)
-                )
+        if self.target is not None:
+            if isinstance(self.condition, int):
+                if len(self.calls) <= self.condition or not self.calls[self.condition]:
+                    raise AssertionError(
+                        "Breakpoint condition on %s was not met for iteration %s."
+                        % (self.target, self.condition)
+                    )
+            elif isinstance(self.condition, (set, tuple, list)):
+                not_called = [
+                    c for c in self.condition if len(self.calls) <= c or not self.calls[c]
+                ]
+                if not_called:
+                    raise AssertionError(
+                        "Breakpoint condition on %s was not met for iterations %s."
+                        % (self.target, not_called)
+                    )
+            else:
+                if not any(self.calls):
+                    raise AssertionError(
+                        "Breakpoint condition on %s was not met." % (self.target,)
+                    )
 
-    def start_thread(self, target, **kwargs):
-        """Execute the given target (a callable) in another thread.
+    def start_thread(self, func, *args, **kwargs):
+        """Execute the given func (a callable) in another thread.
 
         Tests may call this to run the system in the background.
 
-        Threads started here will be joined on breakpoint context exit
-        (but only *after* unblocking).
+        Threads started here will be joined on breakpoint context exit.
         """
-        t = threading.Thread(target=target, **kwargs)
+        t = threading.Thread(
+            target=func,
+            name="Breakpoint_%s_%s" % (func.__name__, len(self._started_threads)),
+            args=args,
+            kwargs=kwargs,
+        )
         self._started_threads.append(t)
         t.start()
 
@@ -202,23 +257,25 @@ class Breakpoint:
     def wait(self, timeout=omitted, hits=1):
         """Block until the breakpoint is hit by other thread(s).
 
-        Tests should call this to wait for the system to advance to the
-        breakpoint function. Once it does, this method returns and the
-        test may proceed while the system is blocked. Call release()
-        to unblock the system again.
+        Tests should call this to wait for other threads to call the
+        breakpoint.target function. Once they do, this method returns and the
+        test may proceed.
 
         If `hits` is greater than 1, this function waits until the breakpoint
         has been hit the given number of times before returning.
         """
+        if self.target is None:
+            return
+
         if timeout is omitted:
             timeout = self.timeout
 
         start = time.time()
-        while self.blocked < hits:
+        while len([c for c in self.calls if c]) < hits:
             if timeout is not None and time.time() - start > timeout:
                 raise RuntimeError(
                     "Breakpoint on %s not hit after %s seconds."
-                    % (self.funcname, timeout)
+                    % (self.target, timeout)
                 )
             time.sleep(self.check_interval)
 
@@ -238,14 +295,114 @@ class Breakpoint:
             if timeout is not None and time.time() - start > timeout:
                 raise RuntimeError(
                     "Condition for %s not met after %s seconds."
-                    % (self.funcname, timeout)
+                    % (self.target, timeout)
+                )
+            time.sleep(self.check_interval)
+
+    # ------------------------- Blocking breakpoints ------------------------- #
+
+    @classmethod
+    def block(cls, *args, **kwargs):
+        """Create a Breakpoint which blocks, to synchronize execution."""
+        self = cls(*args, **kwargs)
+        self.fire = self._fire_blocking
+        return self
+
+    def _fire_blocking(self):
+        start = time.time()
+        timeout = self.timeout
+        self.blocked = True
+        while self.blocked:
+            if timeout is not None and time.time() - start > timeout:
+                raise RuntimeError(
+                    "Breakpoint on %s.%s timed out after %s seconds."
+                    % (self.obj, self.funcname, timeout)
                 )
             time.sleep(self.check_interval)
 
     def release(self):
         """Allow the system to proceed (until the breakpoint is hit again).
 
-        When the system hits this breakpoint, it blocks while the test
-        proceeds. The test should call this method to unblock the system.
+        When the system hits a blocking breakpoint, it blocks while the test proceeds.
+        When the context exits, it calls this method to unblock the system.
+        If the test wants to unblock the system before the context exits,
+        it may call this method directly.
         """
-        self.blocked = 0
+        self.blocked = False
+
+    # ------------------------- Erroring breakpoints ------------------------- #
+
+    @classmethod
+    def error(cls, exception, *args, **kwargs):
+        """Create a Breakpoint which throws the given exception.
+
+        The `exception` argument must be an exception instance, which is raised
+        whenever the condition is met.
+        """
+        self = cls(*args, **kwargs)
+        self.exception = exception
+        self.fire = self._fire_erroring
+        return self
+
+    def _fire_erroring(self):
+        raise self.exception
+
+
+class do:
+
+    breakpoint = None
+    _thread = None
+
+    def __init__(self, func, *args, **kwargs):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        self.breakpoint = Breakpoint(None)
+        self.results = []
+
+    def until(self, target, timeout=None):
+        self.breakpoint.target = target
+        self.breakpoint.fire = self.breakpoint._fire_blocking
+        if timeout is not None:
+            self.breakpoint.timeout = timeout
+        return self
+
+    def beyond(self, target, timeout=None):
+        self.breakpoint.target = target
+        if timeout is not None:
+            self.breakpoint.timeout = timeout
+        return self
+
+    def error_on(self, target, exception, timeout=None):
+        self.breakpoint.target = target
+        self.breakpoint.exception = exception
+        self.breakpoint.fire = self.breakpoint._fire_erroring
+        if timeout is not None:
+            self.breakpoint.timeout = timeout
+        return self
+
+    @property
+    def returns(self):
+        if self.breakpoint is None:
+            raise RuntimeError("You must call do().until(), .beyond(), or .error_on() before declaring .returns.")
+        self.breakpoint.event = "return"
+        return self
+
+    def where(self, condition):
+        self.breakpoint.condition = condition
+        return self
+
+    def __enter__(self):
+        self.breakpoint.__enter__()
+        self.breakpoint.start_thread(self._gather_results)
+        self.breakpoint.wait()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.breakpoint.__exit__(type, value, traceback)
+
+    def _gather_results(self):
+        self.results.append(self.func(*self.args, **self.kwargs))
+
+    def release(self):
+        self.breakpoint.release()

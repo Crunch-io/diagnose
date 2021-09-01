@@ -3,18 +3,15 @@
 from collections import namedtuple
 import datetime
 import functools
-import gc
 import linecache
-import six
 import sys
 import time
 import traceback
-import types
-import weakref
 
 import hunter
-import mock
+import six
 
+from diagnose import patchlib
 
 omitted = object()
 
@@ -70,7 +67,7 @@ class FunctionProbe(object):
         if instruments is None:
             instruments = {}
         self.instruments = instruments
-        self.patches = {}
+        self.patches = []
         active_probes[target] = self
 
     def __str__(self):
@@ -82,22 +79,7 @@ class FunctionProbe(object):
 
     __repr__ = __str__
 
-    def make_patches(self):
-        """Set self.patches to a list of mock._patch objects which wrap our target function."""
-        primary_patch = mock.patch(self.target)
-
-        # Replace the target with a wrapper.
-        original, local = primary_patch.get_original()
-        if isinstance(original, types.FunctionType):
-            base = original
-        elif isinstance(original, (staticmethod, classmethod)):
-            base = original.__func__
-        elif isinstance(original, property):
-            base = original.fget
-        else:
-            raise TypeError(
-                "Cannot probe: %s is not a function." % (repr(self.target),)
-            )
+    def make_wrapper(self, base):
         varnames = self.maybe_unwrap(base).__code__.co_varnames
 
         @functools.wraps(base)
@@ -252,64 +234,7 @@ class FunctionProbe(object):
                 if tracer is not None:
                     tracer.stop()
 
-        if isinstance(original, property):
-            # We can't patch original.fget directly because it's read-only,
-            # so we replace the whole property with a new one, passing our
-            # probe_wrapper as its fget.
-            # At this time, we only patch fget. If there's enough demand,
-            # we could do all three in the future, but then that would take
-            # three probe_wrapper functions, and what the instruments do
-            # with three instead of one could be very confusing.
-            primary_patch.new = property(
-                probe_wrapper, original.fset, original.fdel, original.__doc__
-            )
-        else:
-            if isinstance(original, staticmethod):
-                probe_wrapper = staticmethod(probe_wrapper)
-            elif isinstance(original, classmethod):
-                probe_wrapper = classmethod(probe_wrapper)
-            primary_patch.new = probe_wrapper
-
-        patches = {0: primary_patch}
-
-        # Add patches for any other modules/classes which have
-        # the target as an attribute, or "registry" dicts which have
-        # the target as a value.
-        _resolved_target = primary_patch.getter()
-        for ref in gc.get_referrers(original):
-            if not isinstance(ref, dict):
-                continue
-
-            names = [k for k, v in ref.items() if v is original]
-            for parent in gc.get_referrers(ref):
-                if parent is _resolved_target or parent is primary_patch:
-                    continue
-                if parent is probe_wrapper:
-                    # In Python 3.2+, `@functools.wraps(base)` above sets
-                    # `wrapper.__wrapped__ = wrapped`. We don't want to
-                    # patch that with itself!
-                    continue
-
-                if getattr(parent, "__dict__", None) is ref:
-                    # An attribute of a module or class or instance.
-                    for name in names:
-                        patch_id = len(patches)
-                        patch = WeakMethodPatch(
-                            self.make_getter(patch_id, parent), name, probe_wrapper
-                        )
-                        patches[patch_id] = patch
-                else:
-                    for gpa in gc.get_referrers(parent):
-                        if getattr(gpa, "__dict__", None) is parent:
-                            # A member of a dict which is
-                            # an attribute of a module or class or instance.
-                            for name in names:
-                                patch_id = len(patches)
-                                patch = DictPatch(ref, name, probe_wrapper)
-                                patches[patch_id] = patch
-                            break
-
-        self.patches = patches
+        return probe_wrapper
 
     @staticmethod
     def maybe_unwrap(func):
@@ -333,36 +258,16 @@ class FunctionProbe(object):
 
         return func
 
-    def make_getter(self, patch_id, parent):
-        def callback(ref):
-            p = self.patches.get(patch_id, None)
-            if p:
-                try:
-                    p.stop()
-                except RuntimeError:
-                    # Already stopped. Ignore.
-                    pass
-                self.patches.pop(patch_id, None)
-
-        try:
-            getter = weakref.ref(parent, callback)
-        except TypeError:
-
-            def getter():
-                return parent
-
-        return getter
-
     def start(self):
         """Apply self.patches. Safe to call after already started."""
         if not self.patches:
-            self.make_patches()
-        for p in six.itervalues(self.patches):
+            self.patches = patchlib.make_patches(self.target, self.make_wrapper)
+        for p in self.patches:
             if not hasattr(p, "is_local"):
                 p.start()
 
     def stop(self):
-        for p in six.itervalues(self.patches):
+        for p in self.patches:
             try:
                 p.stop()
             except RuntimeError:
@@ -444,133 +349,3 @@ class HotspotsFinder(object):
 
     def source(self, lineno):
         return linecache.getline(self.filename, lineno)
-
-
-# ----------------------------- Weak patch ----------------------------- #
-
-
-class WeakMethodPatch(object):
-    """A Patch for an attribute a Python object.
-
-    On start/__enter__, calls self.getter() which should return an object,
-    then replaces the given attribute of that object with the new value.
-    On stop/__exit__, replaces the same attribute with the previous value.
-
-    Used by FunctionProbe to replace references to functions which appear in
-    modules, classes, or other objects. Weak references are used internally
-    so that, if the object is removed from that module etc (has no more strong
-    references), then the patch is automatically abandoned.
-    """
-
-    def __init__(self, getter, attribute, new):
-        self.getter = getter
-        self.attribute = attribute
-        self.new = new
-
-    def __repr__(self):
-        return "%s(%s, %s, %s)" % (self.__class__.__name__, self.getter, self.attribute, self.new)
-
-    def get_original(self):
-        target = self.getter()
-        name = self.attribute
-
-        original = omitted
-        local = False
-
-        try:
-            original = target.__dict__[name]
-        except (AttributeError, KeyError):
-            original = getattr(target, name, omitted)
-        else:
-            local = True
-
-        if original is omitted:
-            raise AttributeError("%s does not have the attribute %r" % (target, name))
-        return original, local
-
-    def __enter__(self):
-        """Perform the patch."""
-        original, local = self.get_original()
-        self.temp_original = weakref.ref(original)
-        self.is_local = local
-        setattr(self.getter(), self.attribute, self.new)
-        return self.new
-
-    def __exit__(self, *exc_info):
-        """Undo the patch."""
-        if not hasattr(self, "is_local"):
-            raise RuntimeError("stop called on unstarted patcher")
-
-        target = self.getter()
-        if target is None:
-            return
-
-        original = self.temp_original()
-        if original is None:
-            return
-
-        if getattr(target, self.attribute, None) is self.new:
-            if self.is_local:
-                setattr(target, self.attribute, original)
-            else:
-                delattr(target, self.attribute)
-                if not hasattr(target, self.attribute):
-                    # needed for proxy objects like django settings
-                    setattr(target, self.attribute, original)
-
-        del self.is_local
-
-    def start(self):
-        """Activate a patch, returning any created mock."""
-        result = self.__enter__()
-        return result
-
-    def stop(self):
-        """Stop an active patch."""
-        return self.__exit__()
-
-
-class DictPatch(object):
-    """A Patch for a member of a Python dictionary.
-
-    On start/__enter__, replaces the member of the given dictionary
-    identified by the given key with a new object. On stop/__exit__,
-    replaces the same key with the previous object.
-
-    Used by FunctionProbe to replace references to functions which appear
-    in any dictionary, such as a function registry.
-    """
-
-    def __init__(self, dictionary, key, new):
-        self.dictionary = dictionary
-        self.key = key
-        self.new = new
-
-    def get_original(self):
-        return self.dictionary[self.key], True
-
-    def __enter__(self):
-        """Perform the patch."""
-        original, local = self.get_original()
-        self.temp_original = original
-        self.is_local = local
-        self.dictionary[self.key] = self.new
-        return self.new
-
-    def __exit__(self, *exc_info):
-        """Undo the patch."""
-        if not hasattr(self, "is_local"):
-            raise RuntimeError("stop called on unstarted patcher")
-
-        self.dictionary[self.key] = self.temp_original
-
-        del self.is_local
-
-    def start(self):
-        """Activate a patch, returning any created mock."""
-        result = self.__enter__()
-        return result
-
-    def stop(self):
-        """Stop an active patch."""
-        return self.__exit__()

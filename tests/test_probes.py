@@ -17,7 +17,7 @@ except ImportError:
     MockPatch = mock._mock._patch
 
 import diagnose
-from diagnose import probes, sensor
+from diagnose import patchlib, probes, sensor
 from diagnose.instruments import ProbeTestInstrument
 from diagnose.test_fixtures import (
     a_func,
@@ -312,6 +312,11 @@ def owner_types(obj):
     return dict(num_instances)
 
 
+def weak_referents(patches):
+    """Return the object patched by each WeakMethodPatch in the given patches."""
+    return [p.getter() for p in patches if isinstance(p, patchlib.WeakMethodPatch)]
+
+
 class TestTargets(ProbeTestCase):
     def test_probe_bad_mock(self):
         p = probes.attach_to("diagnose.test_fixtures.Thing.notamethod")
@@ -404,11 +409,13 @@ class TestTargets(ProbeTestCase):
                 # a) the target that we passed to probes.attach_to()
                 MockPatch: 1,
                 # b) 3 "methods": t.add13, t2.add13, and test_probes.func_2
-                probes.WeakMethodPatch: 3,
+                patchlib.WeakMethodPatch: 3,
                 # c) the registry dict.
-                probes.DictPatch: 1,
+                patchlib.DictPatch: 1,
             }
             assert owner_types(func_2) == expected_result
+            # All of the WeakMethodPatch instances should still have a strong reference.
+            assert set(weak_referents(probe.patches)) == {t, t2, sys.modules[__name__]}
 
             # Delete one of our references.
             del t2
@@ -417,11 +424,21 @@ class TestTargets(ProbeTestCase):
                 # The number of Entity references MUST decrease by 1.
                 Entity: 1,
                 MockPatch: 1,
-                # The number of WeakMethodPatch references MUST decrease by 1.
-                probes.WeakMethodPatch: 2,
-                probes.DictPatch: 1,
+                # The number of WeakMethodPatch references does not decrease...
+                patchlib.WeakMethodPatch: 3,
+                patchlib.DictPatch: 1,
             }
             assert owner_types(func_2) == expected_result
+            # ...but the object referred to by WeakMethodPatch should now
+            # be unavailable, having been dereferenced. That is, this
+            # line asserts that WeakMethodPatch is not holding a strong
+            # reference to the original object.
+            assert set(weak_referents(probe.patches)) == {t, None, sys.modules[__name__]}
+
+            # Hit the probed function one more time to verify the unresolvable
+            # weakref doesn't crash things.
+            t.add13(1234)
+            self.assertEqual(i.results, [44, 99999, 1001, 777, 1234])
         finally:
             probe.stop()
 
@@ -433,7 +450,7 @@ class TestTargets(ProbeTestCase):
         func_2(456)
         t.add13(789)
         registry["in_a_dict"](101112)
-        assert i.results == [44, 99999, 1001, 777]
+        assert i.results == [44, 99999, 1001, 777, 1234]
 
     def test_function_registries(self):
         with self.probe("test", "orig", "diagnose.test_fixtures.orig", "result") as p:
