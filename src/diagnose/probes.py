@@ -337,7 +337,9 @@ class HotspotsFinder(object):
         self.__call__(event=None)
 
         if self.calls:
-            worst = max(((call[2], lineno) for lineno, call in six.iteritems(self.calls)))
+            worst = max(
+                ((call[2], lineno) for lineno, call in six.iteritems(self.calls))
+            )
             self.worst = CallTime(*worst, source=self.source(worst[1]))
 
             slowest = max(

@@ -147,12 +147,7 @@ class Breakpoint:
     will be patched if `target` is an (object, attribute-name) tuple."""
 
     def __init__(
-        self,
-        target,
-        event="call",
-        condition=None,
-        timeout=10.0,
-        fire=None,
+        self, target, event="call", condition=None, timeout=10.0, fire=None,
     ):
         """
         target:
@@ -237,7 +232,9 @@ class Breakpoint:
             patch_all = self.patch_all_referrers
             if patch_all is None:
                 patch_all = isinstance(self.target, six.string_types)
-            self.patches = patchlib.make_patches(self.target, self._make_wrapper, patch_all_referrers=patch_all)
+            self.patches = patchlib.make_patches(
+                self.target, self._make_wrapper, patch_all_referrers=patch_all
+            )
 
         for p in self.patches:
             p.start()
@@ -267,7 +264,9 @@ class Breakpoint:
                     )
             elif isinstance(self.condition, (set, tuple, list)):
                 not_called = [
-                    c for c in self.condition if len(self.calls) <= c or not self.calls[c]
+                    c
+                    for c in self.condition
+                    if len(self.calls) <= c or not self.calls[c]
                 ]
                 if not_called:
                     raise AssertionError(
@@ -437,7 +436,9 @@ class do:
     def returns(self):
         """Set the Breakpoint to fire when the target returns, not when called."""
         if self.breakpoint is None:
-            raise RuntimeError("You must call do().until(), .beyond(), or .error_on() before declaring .returns.")
+            raise RuntimeError(
+                "You must call do().until(), .beyond(), or .error_on() before declaring .returns."
+            )
         self.breakpoint.event = "return"
         return self
 

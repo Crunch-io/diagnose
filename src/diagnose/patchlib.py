@@ -47,13 +47,12 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
     elif isinstance(target, (types.FunctionType, types.MethodType)):
         primary_patch = _patch_one(target)
         if primary_patch is None:
-            raise TypeError(
-                "Cannot patch: %s could not be found." % (repr(target),)
-            )
+            raise TypeError("Cannot patch: %s could not be found." % (repr(target),))
         original = target
     else:
         raise TypeError(
-            "Cannot patch: %s is not an (obj, attr) pair nor a dotted path name." % (repr(target),)
+            "Cannot patch: %s is not an (obj, attr) pair nor a dotted path name."
+            % (repr(target),)
         )
 
     # Replace the target with a wrapper.
@@ -64,9 +63,7 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
     elif isinstance(original, property):
         base = original.fget
     else:
-        raise TypeError(
-            "Cannot patch: %s is not a function." % (repr(target),)
-        )
+        raise TypeError("Cannot patch: %s is not a function." % (repr(target),))
 
     wrapper = make_wrapper(base)
 
@@ -138,7 +135,11 @@ def _patch_one(original):
 
         names = [k for k, v in ref.items() if v is original]
         for parent in gc.get_referrers(ref):
-            pq = parent.__qualname__ if isinstance(parent, type) else parent.__class__.__qualname__
+            pq = (
+                parent.__qualname__
+                if isinstance(parent, type)
+                else parent.__class__.__qualname__
+            )
             # An attribute of a "parent" module or class or instance.
             for name in names:
                 if "%s.%s" % (pq, name) == original_qualname:
@@ -174,7 +175,12 @@ class WeakMethodPatch(object):
         self.new = new
 
     def __repr__(self):
-        return "%s(%s, %s, %s)" % (self.__class__.__name__, self.getter, self.attribute, self.new)
+        return "%s(%s, %s, %s)" % (
+            self.__class__.__name__,
+            self.getter,
+            self.attribute,
+            self.new,
+        )
 
     def _safe_stop(self, ref=None):
         try:

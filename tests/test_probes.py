@@ -324,14 +324,13 @@ class TestTargets(ProbeTestCase):
             p.start()
 
         if six.PY2:
-            expected_message = "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+            expected_message = (
+                "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
+            )
         else:
             expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
 
-        assert (
-            exc.exception.args[0]
-            == expected_message
-        )
+        assert exc.exception.args[0] == expected_message
 
     def test_target_copies(self):
         # When module M chooses "from x import y", then mock.patching x.y
@@ -357,13 +356,9 @@ class TestTargets(ProbeTestCase):
 
         # Before attaching the probe, there should be some references to func_2,
         # but not our patch objects.
-        expected_result = {
-            types.ModuleType: 2,
-            Entity: 2
-        }
+        expected_result = {types.ModuleType: 2, Entity: 2}
         self.assertEqual(
-            owner_types(func_2),
-            expected_result,
+            owner_types(func_2), expected_result,
         )
 
         probe = probes.attach_to("diagnose.test_fixtures.func_2")
@@ -433,7 +428,11 @@ class TestTargets(ProbeTestCase):
             # be unavailable, having been dereferenced. That is, this
             # line asserts that WeakMethodPatch is not holding a strong
             # reference to the original object.
-            assert set(weak_referents(probe.patches)) == {t, None, sys.modules[__name__]}
+            assert set(weak_referents(probe.patches)) == {
+                t,
+                None,
+                sys.modules[__name__],
+            }
 
             # Hit the probed function one more time to verify the unresolvable
             # weakref doesn't crash things.
