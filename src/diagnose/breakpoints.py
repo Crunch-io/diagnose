@@ -402,7 +402,7 @@ class do:
 
     breakpoint = None
 
-    def __init__(self, func, *args, **kwargs):
+    def __init__(self, func=None, *args, **kwargs):
         self.func = func
         self.args = args
         self.kwargs = kwargs
@@ -446,10 +446,17 @@ class do:
         self.breakpoint.condition = condition
         return self
 
+    @property
+    def once(self):
+        """Set the Breakpoint to fire only once."""
+        self.breakpoint.condition = 0
+        return self
+
     def __enter__(self):
         self.breakpoint.__enter__()
-        self.breakpoint.start_thread(self._gather_results)
-        self.breakpoint.wait()
+        if self.func is not None:
+            self.breakpoint.start_thread(self._gather_results)
+            self.breakpoint.wait()
         return self
 
     def __exit__(self, type, value, traceback):
