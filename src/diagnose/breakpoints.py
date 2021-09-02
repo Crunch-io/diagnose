@@ -97,9 +97,8 @@ Entering the context starts a thread running the given function and will
 wait() for the Breakpoint to be hit. Exiting the context will join()
 the thread.
 
-Any of the functions `until`, `beyond`, `error_on`, `where`, and the `returns` property
-all return the do() instance itself, so it doesn't matter which one comes last;
-they can all be used in a `with` block, like so:
+Most do() methods and properties return the do() instance itself, so it doesn't
+matter which one comes last; they can all be passed to a `with` block, like so:
 
     t = do(foo)
     with t.until("path.to.obj.func").returns:
@@ -178,6 +177,7 @@ class Breakpoint:
         self.stackframe = None
 
         self.calls = []
+        self.hits = 0
         self.fire = fire
 
     def _make_wrapper(self, base):
@@ -219,10 +219,13 @@ class Breakpoint:
                 "Breakpoint.condition must be None, an int or list of ints, or a callable."
             )
         self.calls.append(met)
+        if met:
+            self.hits += 1
         return met
 
     def __enter__(self):
         self.calls = []
+        self.hits = 0
         self._started_threads = []
         self.release()
 
@@ -242,7 +245,8 @@ class Breakpoint:
         return self
 
     def __exit__(self, type, value, traceback):
-        for p in self.patches:
+        while self.patches:
+            p = self.patches.pop(0)
             p.stop()
 
         self.release()
@@ -317,7 +321,7 @@ class Breakpoint:
             timeout = self.timeout
 
         start = time.time()
-        while len([c for c in self.calls if c]) < hits:
+        while self.hits < hits:
             if timeout is not None and time.time() - start > timeout:
                 raise RuntimeError(
                     "Breakpoint on %s not hit after %s seconds."
@@ -362,8 +366,8 @@ class Breakpoint:
         while self.blocked:
             if timeout is not None and time.time() - start > timeout:
                 raise RuntimeError(
-                    "Breakpoint on %s.%s timed out after %s seconds."
-                    % (self.obj, self.funcname, timeout)
+                    "Breakpoint on %s timed out after %s seconds."
+                    % (self.target, timeout)
                 )
             time.sleep(self.check_interval)
 
@@ -375,6 +379,7 @@ class Breakpoint:
         If the test wants to unblock the system before the context exits,
         it may call this method directly.
         """
+        self.hits = 0
         self.blocked = False
 
     # ------------------------- Erroring breakpoints ------------------------- #
