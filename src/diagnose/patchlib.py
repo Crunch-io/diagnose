@@ -98,6 +98,7 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
                 continue
 
             names = [k for k, v in ref.items() if v is original]
+            seen_names = set()
             for parent in gc.get_referrers(ref):
                 if parent is _resolved_target or parent is primary_patch:
                     continue
@@ -118,7 +119,15 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
                             # of a "grandparent" module or class or instance.
                             # ref[name] = original, where gpa.parent = ref
                             for name in names:
-                                patches.append(DictPatch(ref, name, wrapper))
+                                if name in seen_names:
+                                    # Don't patch the same dict twice, or
+                                    # a) we'll waste cycles, and
+                                    # b) DictPatch.stop() may restore a patch
+                                    # instead of the correct original.
+                                    pass
+                                else:
+                                    patches.append(DictPatch(ref, name, wrapper))
+                                    seen_names.add(name)
                             break
 
     return patches

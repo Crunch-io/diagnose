@@ -21,13 +21,10 @@ from diagnose import patchlib, probes, sensor
 from diagnose.instruments import ProbeTestInstrument
 from diagnose.test_fixtures import (
     a_func,
-    func_2,
     hard_work,
     Thing,
     to_columns,
-    funcs,
     mult_by_8,
-    sum4,
 )
 
 from . import ProbeTestCase
@@ -113,11 +110,10 @@ class TestReturnEvent(ProbeTestCase):
             )
             with self.assertRaises(TypeError):
                 a_func(None)
-            self.assertEqual(len(i.results), 1)
-            self.assertEqual(type(i.results[0]), TypeError)
-            self.assertEqual(
-                i.results[0].args,
-                ("unsupported operand type(s) for +: 'NoneType' and 'int'",),
+            assert len(i.results) == 1
+            assert type(i.results[0]) == TypeError
+            assert i.results[0].args == (
+                "unsupported operand type(s) for +: 'NoneType' and 'int'",
             )
         finally:
             probe.stop()
@@ -219,7 +215,7 @@ class TestEndEvent(ProbeTestCase):
             )
             with self.assertRaises(TypeError):
                 a_func(None)
-            self.assertEqual(i.results, [13])
+            assert i.results == [13]
         finally:
             probe.stop()
 
@@ -332,154 +328,6 @@ class TestTargets(ProbeTestCase):
 
         assert exc.exception.args[0] == expected_message
 
-    def test_target_copies(self):
-        # When module M chooses "from x import y", then mock.patching x.y
-        # does not affect M.y. Similarly, an existing object instance I
-        # which has I.y = y is not patched by mock.patch.
-        # Assert that FunctionProbe patches (and UNpatches) all such copies of y.
-        old_probes_func_2 = func_2
-        old_local_func_2 = func_2
-
-        class Entity(object):
-            pass
-
-        t = Entity()
-        t.add13 = func_2
-        self.assertTrue(t.add13 is old_local_func_2)
-
-        t2 = Entity()
-        t2.add13 = func_2
-        self.assertTrue(t2.add13 is old_local_func_2)
-
-        registry["in_a_dict"] = func_2
-        self.assertTrue(registry["in_a_dict"] is old_local_func_2)
-
-        # Before attaching the probe, there should be some references to func_2,
-        # but not our patch objects.
-        expected_result = {types.ModuleType: 2, Entity: 2}
-        self.assertEqual(
-            owner_types(func_2), expected_result,
-        )
-
-        probe = probes.attach_to("diagnose.test_fixtures.func_2")
-        try:
-            probe.start()
-            probe.instruments["instrument1"] = i = ProbeTestInstrument(
-                expires=datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
-                name="func_2",
-                value="arg",
-                custom=None,
-            )
-
-            # Invoking x.y is typical and works naturally...
-            self.assertTrue(func_2 is not old_probes_func_2)
-            func_2(44)
-            self.assertEqual(i.results, [44])
-
-            # ...but invoking M.y (we imported func_2 into test_probes' namespace)
-            # is harder:
-            self.assertTrue(func_2 is not old_local_func_2)
-            func_2(99999)
-            self.assertEqual(i.results, [44, 99999])
-
-            # ...and invoking Entity().y is just as hard:
-            self.assertTrue(t.add13 is not old_local_func_2)
-            self.assertTrue(t2.add13 is not old_local_func_2)
-            t.add13(1001)
-            self.assertEqual(i.results, [44, 99999, 1001])
-
-            # ...etc:
-            self.assertTrue(registry["in_a_dict"] is not old_local_func_2)
-            registry["in_a_dict"](777)
-            self.assertEqual(i.results, [44, 99999, 1001, 777])
-
-            # The next problem is that, while our patch is live,
-            # if t2 goes out of its original scope, we've still got
-            # a reference to it in our mock patch.
-            expected_result = {
-                # These referred to func_2 before our probe was attached...
-                types.ModuleType: 2,
-                Entity: 2,
-                # ...and these are added by attaching the probe:
-                # a) the target that we passed to probes.attach_to()
-                MockPatch: 1,
-                # b) 3 "methods": t.add13, t2.add13, and test_probes.func_2
-                patchlib.WeakMethodPatch: 3,
-                # c) the registry dict.
-                patchlib.DictPatch: 1,
-            }
-            assert owner_types(func_2) == expected_result
-            # All of the WeakMethodPatch instances should still have a strong reference.
-            assert set(weak_referents(probe.patches)) == {t, t2, sys.modules[__name__]}
-
-            # Delete one of our references.
-            del t2
-            expected_result = {
-                types.ModuleType: 2,
-                # The number of Entity references MUST decrease by 1.
-                Entity: 1,
-                MockPatch: 1,
-                # The number of WeakMethodPatch references does not decrease...
-                patchlib.WeakMethodPatch: 3,
-                patchlib.DictPatch: 1,
-            }
-            assert owner_types(func_2) == expected_result
-            # ...but the object referred to by WeakMethodPatch should now
-            # be unavailable, having been dereferenced. That is, this
-            # line asserts that WeakMethodPatch is not holding a strong
-            # reference to the original object.
-            assert set(weak_referents(probe.patches)) == {
-                t,
-                None,
-                sys.modules[__name__],
-            }
-
-            # Hit the probed function one more time to verify the unresolvable
-            # weakref doesn't crash things.
-            t.add13(1234)
-            self.assertEqual(i.results, [44, 99999, 1001, 777, 1234])
-        finally:
-            probe.stop()
-
-        # All patches MUST be stopped
-        assert func_2 is old_probes_func_2
-        assert func_2 is old_local_func_2
-        assert t.add13 is old_local_func_2
-        func_2(123)
-        func_2(456)
-        t.add13(789)
-        registry["in_a_dict"](101112)
-        assert i.results == [44, 99999, 1001, 777, 1234]
-
-    def test_function_registries(self):
-        with self.probe("test", "orig", "diagnose.test_fixtures.orig", "result") as p:
-            assert funcs["orig"]("ahem") == "aha!"
-
-            # The probe MUST have logged an entry
-            i = list(p.instruments.values())[0]
-            assert i.results == ["aha!"]
-
-            i.log = []
-
-        assert funcs["orig"]("ahem") == "aha!"
-
-        # The probe MUST NOT have logged an entry
-        assert i.results == []
-
-    def test_probe_nonfunc(self):
-        # We REALLY should not be allowed to patch anything
-        # that's not a function!
-        p = probes.attach_to("diagnose.test_fixtures.Thing")
-        with self.assertRaises(TypeError):
-            p.start()
-
-    def test_patch_staticmethod(self):
-        with self.probe(
-            "test", "quantile", "diagnose.test_fixtures.Thing.static", "result"
-        ) as p:
-            assert Thing().static() == 15
-            assert list(p.instruments.values())[0].results == [15]
-
     def test_patch_wrapped_function_end_event(self):
         probe = probes.attach_to("diagnose.test_fixtures.Thing.add5")
         try:
@@ -490,30 +338,6 @@ class TestTargets(ProbeTestCase):
             assert instr.results == [113]
         finally:
             probe.stop()
-
-    def test_patch_class_decorated(self):
-        probe = probes.attach_to("diagnose.test_fixtures.sum4")
-        try:
-            probe.start()
-            instr = ProbeTestInstrument("deco", "arg4", event="call")
-            probe.instruments["deco"] = instr
-            assert sum4(1, 2, 3, 4) == 10
-            assert instr.results == [4]
-        finally:
-            probe.stop()
-
-    def test_patch_property(self):
-        old_prop = Thing.exists
-
-        with self.probe(
-            "test", "quantile", "diagnose.test_fixtures.Thing.exists", "result"
-        ) as p:
-            assert Thing().exists is True
-            assert list(p.instruments.values())[0].results == [True]
-            assert Thing.exists is not old_prop
-
-        assert Thing().exists is True
-        assert Thing.exists is old_prop
 
 
 class TestProbeCheckCall(ProbeTestCase):
