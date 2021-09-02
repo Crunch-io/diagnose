@@ -2,7 +2,6 @@ import datetime
 import gc
 import sys
 import time
-import types
 from collections import defaultdict
 
 import six

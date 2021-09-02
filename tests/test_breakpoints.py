@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 import inspect
-import time
 
 
 from diagnose.breakpoints import Breakpoint, do
