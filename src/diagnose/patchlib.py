@@ -42,6 +42,10 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
         primary_patch = mock.patch(target)
         original, local = primary_patch.get_original()
     elif isinstance(target, tuple) and len(target) == 2:
+        if not isinstance(target[1], six.text_type):
+            raise TypeError(
+                "Targets which are (obj, funcname) 2-tuples MUST pass the funcname as a string."
+            )
         primary_patch = mock.patch.object(*target)
         original, local = primary_patch.get_original()
     elif isinstance(target, (types.FunctionType, types.MethodType)):

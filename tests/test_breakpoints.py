@@ -3,8 +3,20 @@ import inspect
 import time
 
 
-from diagnose.breakpoints import Breakpoint
+from diagnose.breakpoints import Breakpoint, do
 from diagnose.test_fixtures import Thing
+
+
+class Man:
+    def __init__(self):
+        self.mints = 0
+
+    def add_mint(self):
+        self.mints += 1
+
+    def add_mints(self, num):
+        for m in range(num):
+            self.add_mint()
 
 
 def square_of_x(x):
@@ -262,7 +274,7 @@ class TestBreakpointFireFunction:
         with Breakpoint.block(Thing.advance_stage, timeout=0.001) as bp:
             bp.start_thread(trapping_errors, thing.advance_multiple)
             bp.wait()
-            time.sleep(0.1)
+            bp.wait_until(lambda: caught, timeout=10.0)
 
         assert caught == [
             "Breakpoint on %s timed out after 0.001 seconds." % (Thing.advance_stage,)
@@ -300,3 +312,75 @@ class TestBreakpointStackframe:
 
             caller_locs = frame.f_back.f_locals
             assert caller_locs["x"] == 5
+
+
+class TestDo:
+    def test_no_target(self):
+        t = do()
+        with t:
+            pass
+
+    def test_basic(self):
+        t = do(square_of_x, 4)
+        with t:
+            assert t.results == [16]
+        assert t.results == [16]
+
+    def test_until(self):
+        t = do(square_of_x_plus_1, 4)
+        with t.until((fn_module, "square_of_x")):
+            assert t.results == []
+        assert t.results == [25]
+
+    def test_beyond(self):
+        t = do(square_of_x_plus_1, 4)
+        with t.beyond((fn_module, "square_of_x")):
+            assert t.results == [25]
+        assert t.results == [25]
+
+    def test_error_on(self):
+        caught = []
+
+        def trapping_errors(f, *args):
+            try:
+                f(*args)
+            except ValueError as exc:
+                caught.append(exc.args[0])
+
+        t = do(trapping_errors, square_of_x_plus_1, 4)
+        with t.error_on((fn_module, "square_of_x"), ValueError("xyz")):
+            assert t.results == [None]
+        assert t.results == [None]
+
+        assert caught == ["xyz"]
+
+    def test_returns(self):
+        mr_creosote = Man()
+
+        t = do(mr_creosote.add_mints, 4)
+        with t.until((Man, "add_mint")):
+            assert mr_creosote.mints == 0
+        assert mr_creosote.mints == 4
+
+        with t.until((Man, "add_mint")).returns:
+            assert mr_creosote.mints == 5
+        assert mr_creosote.mints == 8
+
+    def test_where(self):
+        mr_creosote = Man()
+
+        t = do(mr_creosote.add_mints, 4)
+        with t.until((Man, "add_mint")).where(2):
+            # Note where(2) above is 0-indexed, so it actually refers
+            # to the _third_ call, but because we fire on the "call" event,
+            # the mints have only increased to 2 at this point.
+            assert mr_creosote.mints == 2
+        assert mr_creosote.mints == 4
+
+    def test_once(self):
+        mr_creosote = Man()
+
+        t = do(mr_creosote.add_mints, 4)
+        with t.until((Man, "add_mint")).returns.once:
+            assert mr_creosote.mints == 1
+        assert mr_creosote.mints == 4
