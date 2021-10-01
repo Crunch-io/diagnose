@@ -59,6 +59,12 @@ class TestBreakpointEvent:
             # The function must have completed by this point
             assert thing.stage == "done"
 
+    def test_event_error(self):
+        thing = Thing()
+        with Breakpoint.block(Thing.do, event="error") as bp:
+            bp.start_thread(thing.do, ("too", "many", "template", "args"))
+            bp.wait()
+
 
 class TestBreakpointCondition:
     def test_none_condition(self):
@@ -364,6 +370,16 @@ class TestDo:
         with t.until((Man, "add_mint")).returns:
             assert mr_creosote.mints == 5
         assert mr_creosote.mints == 8
+
+    def test_errors(self):
+        mr_creosote = Man()
+        mr_creosote.mints = "not_a_number"
+
+        t = do(mr_creosote.add_mints, 3)
+        with t.until((Man, "add_mint")).errors:
+            assert mr_creosote.mints == "not_a_number"
+        assert mr_creosote.mints == "not_a_number"
+        assert isinstance(t.results[0], TypeError)
 
     def test_where(self):
         mr_creosote = Man()

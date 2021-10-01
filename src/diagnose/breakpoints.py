@@ -182,7 +182,7 @@ class Breakpoint:
         self.fire = fire
 
     def _make_wrapper(self, base):
-        """The internal action for a blocking Breakpoint."""
+        """A function wrpper which fires any internal action for a Breakpoint."""
 
         @functools.wraps(base)
         def breakpoint_wrapper(*args, **kwargs):
@@ -333,8 +333,8 @@ class Breakpoint:
         while self.hits < hits:
             if timeout is not None and time.time() - start > timeout:
                 raise RuntimeError(
-                    "Breakpoint on %s not hit after %s seconds."
-                    % (self.target, timeout)
+                    "Breakpoint on %s (event='%s') not hit after %s seconds."
+                    % (self.target, self.event, timeout)
                 )
             time.sleep(self.check_interval)
 
@@ -488,7 +488,13 @@ class do:
         self.breakpoint.__exit__(type, value, traceback)
 
     def _gather_results(self):
-        self.results.append(self.func(*self.args, **self.kwargs))
+        try:
+            result = self.func(*self.args, **self.kwargs)
+        except Exception as exc:
+            result = exc
+            raise
+        finally:
+            self.results.append(result)
 
     def release(self):
         """Release any threads blocked on the Breakpoint."""
