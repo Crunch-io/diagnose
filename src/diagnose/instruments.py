@@ -119,9 +119,16 @@ class Instrument(object):
         """Use self as a decorator, attaching a probe to the wrapped function."""
         classname = sys._getframe(1).f_code.co_name
         if classname == "<module>":
-            target = "%s.%s" % (f.__module__, getattr(f, "__name__", None) or getattr(f, "func_name"))
+            target = "%s.%s" % (
+                f.__module__,
+                getattr(f, "__name__", None) or getattr(f, "func_name"),
+            )
         else:
-            target = "%s.%s.%s" % (f.__module__, classname, getattr(f, "__name__", None) or getattr(f, "func_name"))
+            target = "%s.%s.%s" % (
+                f.__module__,
+                classname,
+                getattr(f, "__name__", None) or getattr(f, "func_name"),
+            )
 
         probe = probes.attach_to(target)
         # If we prefix the spec_id with self.mgr.short_id, then that

@@ -49,6 +49,9 @@ def to_columns(rowlist):
 
 
 class Thing:
+
+    stage = None
+
     def __init__(self, template="<%s>"):
         self.template = template
 
@@ -66,6 +69,15 @@ class Thing:
     @property
     def exists(self):
         return True
+
+    def advance_stage(self, to):
+        self.stage = to
+
+    def advance_multiple(self):
+        self.advance_stage(to="alpha")
+        self.advance_stage(to="beta")
+        self.advance_stage(to="gamma")
+        self.advance_stage(to="delta")
 
 
 class ClassDecorator(object):

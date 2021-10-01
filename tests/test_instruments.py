@@ -1,7 +1,7 @@
 import datetime
 import sys
 from mock import call, patch
-from six.moves import cStringIO, StringIO
+from six.moves import StringIO
 
 import diagnose
 from diagnose import probes
