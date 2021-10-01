@@ -154,7 +154,8 @@ class Breakpoint:
             or an (obj, funcname) tuple.
         event:
             "call" (default) to fire when the function is entered,
-            "return" to fire when the function exits.
+            "return" to fire when the function exits,
+            "error" to fire when the function throws an Exception.
         condition:
             None to always fire, or a callable that takes the same args
             as the patched target and returns True to fire, False to not.
@@ -191,16 +192,24 @@ class Breakpoint:
                     if self.fire is not None:
                         self.fire()
 
-            result = base(*args, **kwargs)
+            try:
+                result = base(*args, **kwargs)
+            except Exception:
+                if self.event == "error":
+                    if self._condition_met(args, kwargs):
+                        if self.fire is not None:
+                            self.fire()
+                raise
+            else:
+                if self.event == "return":
+                    if self._condition_met(args, kwargs):
+                        if self.fire is not None:
+                            self.fire()
+            finally:
+                # Best practice is not to hold onto stackframe longer
+                # than it is needed.
+                self.stackframe = None
 
-            if self.event == "return":
-                if self._condition_met(args, kwargs):
-                    if self.fire is not None:
-                        self.fire()
-
-            # Best practice is not to hold onto stackframe longer
-            # than it is needed.
-            self.stackframe = None
             return result
 
         return breakpoint_wrapper
@@ -445,6 +454,16 @@ class do:
                 "You must call do().until(), .beyond(), or .error_on() before declaring .returns."
             )
         self.breakpoint.event = "return"
+        return self
+
+    @property
+    def errors(self):
+        """Set the Breakpoint to fire when the target errors, not when called."""
+        if self.breakpoint is None:
+            raise RuntimeError(
+                "You must call do().until(), .beyond(), or .error_on() before declaring .errors."
+            )
+        self.breakpoint.event = "error"
         return self
 
     def where(self, condition):
