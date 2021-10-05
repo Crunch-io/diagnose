@@ -154,7 +154,8 @@ class Breakpoint:
             or an (obj, funcname) tuple.
         event:
             "call" (default) to fire when the function is entered,
-            "return" to fire when the function exits.
+            "return" to fire when the function exits,
+            "error" to fire when the function throws an Exception.
         condition:
             None to always fire, or a callable that takes the same args
             as the patched target and returns True to fire, False to not.
@@ -181,7 +182,7 @@ class Breakpoint:
         self.fire = fire
 
     def _make_wrapper(self, base):
-        """The internal action for a blocking Breakpoint."""
+        """A function wrpper which fires any internal action for a Breakpoint."""
 
         @functools.wraps(base)
         def breakpoint_wrapper(*args, **kwargs):
@@ -191,16 +192,24 @@ class Breakpoint:
                     if self.fire is not None:
                         self.fire()
 
-            result = base(*args, **kwargs)
+            try:
+                result = base(*args, **kwargs)
+            except Exception:
+                if self.event == "error":
+                    if self._condition_met(args, kwargs):
+                        if self.fire is not None:
+                            self.fire()
+                raise
+            else:
+                if self.event == "return":
+                    if self._condition_met(args, kwargs):
+                        if self.fire is not None:
+                            self.fire()
+            finally:
+                # Best practice is not to hold onto stackframe longer
+                # than it is needed.
+                self.stackframe = None
 
-            if self.event == "return":
-                if self._condition_met(args, kwargs):
-                    if self.fire is not None:
-                        self.fire()
-
-            # Best practice is not to hold onto stackframe longer
-            # than it is needed.
-            self.stackframe = None
             return result
 
         return breakpoint_wrapper
@@ -324,8 +333,8 @@ class Breakpoint:
         while self.hits < hits:
             if timeout is not None and time.time() - start > timeout:
                 raise RuntimeError(
-                    "Breakpoint on %s not hit after %s seconds."
-                    % (self.target, timeout)
+                    "Breakpoint on %s (event='%s') not hit after %s seconds."
+                    % (self.target, self.event, timeout)
                 )
             time.sleep(self.check_interval)
 
@@ -447,6 +456,16 @@ class do:
         self.breakpoint.event = "return"
         return self
 
+    @property
+    def errors(self):
+        """Set the Breakpoint to fire when the target errors, not when called."""
+        if self.breakpoint is None:
+            raise RuntimeError(
+                "You must call do().until(), .beyond(), or .error_on() before declaring .errors."
+            )
+        self.breakpoint.event = "error"
+        return self
+
     def where(self, condition):
         """Set the Breakpoint to fire only when the given condition is met."""
         self.breakpoint.condition = condition
@@ -469,7 +488,13 @@ class do:
         self.breakpoint.__exit__(type, value, traceback)
 
     def _gather_results(self):
-        self.results.append(self.func(*self.args, **self.kwargs))
+        try:
+            result = self.func(*self.args, **self.kwargs)
+        except Exception as exc:
+            result = exc
+            raise
+        finally:
+            self.results.append(result)
 
     def release(self):
         """Release any threads blocked on the Breakpoint."""
