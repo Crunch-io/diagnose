@@ -60,7 +60,7 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
         )
 
     # Replace the target with a wrapper.
-    if isinstance(original, (types.FunctionType, types.MethodType)):
+    if isinstance(original, (types.FunctionType, types.MethodType, types.BuiltinFunctionType, types.BuiltinMethodType)):
         base = original
     elif isinstance(original, (staticmethod, classmethod)):
         base = original.__func__

@@ -234,6 +234,9 @@ class FunctionProbe(object):
                 if tracer is not None:
                     tracer.stop()
 
+                for I in six.itervalues(self.instruments):
+                    I.finish()
+
         return probe_wrapper
 
     @staticmethod

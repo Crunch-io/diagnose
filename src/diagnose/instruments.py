@@ -115,6 +115,9 @@ class Instrument(object):
             self.expires = self.error_expiration
         self.mgr.handle_error(probe, self)
 
+    def finish(self):
+        pass
+
     def __call__(self, f):
         """Use self as a decorator, attaching a probe to the wrapped function."""
         classname = sys._getframe(1).f_code.co_name
