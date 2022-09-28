@@ -256,3 +256,19 @@ class TestMakePatches(unittest.TestCase):
 
         assert Thing().exists is True
         assert Thing.exists is old_prop
+
+
+class TestDottedImportAutocomplete(unittest.TestCase):
+    def test_dotted_import_autocomplete(self):
+        assert "gc" in patchlib.dotted_import_autocomplete("")
+        assert "gc" in patchlib.dotted_import_autocomplete("g")
+        assert patchlib.dotted_import_autocomplete("gc") == ["gc"]
+        assert patchlib.dotted_import_autocomplete("gc.") == [
+            "gc.%s" % k for k in sorted(dir(gc))
+        ]
+        assert patchlib.dotted_import_autocomplete("gc.get") == [
+            "gc.%s" % k for k in sorted(dir(gc)) if "g" in k and "e" in k and "t" in k
+        ]
+        assert patchlib.dotted_import_autocomplete("gc.get_objects") == [
+            "gc.get_objects"
+        ]

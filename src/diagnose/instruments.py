@@ -205,6 +205,8 @@ class IncrementInstrument(StatsdInstrumentBase):
 class ProbeTestInstrument(Instrument):
     """An instrument that stores values in self.results."""
 
+    finish_called = False
+
     def __init__(self, *args, **kwargs):
         Instrument.__init__(self, *args, **kwargs)
         self.log = []
@@ -217,3 +219,6 @@ class ProbeTestInstrument(Instrument):
         v = self.evaluate(self.value, _globals, _locals)
         tags = self.merge_tags(_globals, _locals)
         self.log.append((tags, v))
+
+    def finish(self):
+        self.finish_called = True

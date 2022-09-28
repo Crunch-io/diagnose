@@ -93,6 +93,7 @@ class TestReturnEvent(ProbeTestCase):
             assert probe.instruments["instrument1"].results == [
                 "test_return_event_locals_frame"
             ]
+            assert probe.instruments["instrument1"].finish_called
         finally:
             probe.stop()
 
@@ -114,6 +115,7 @@ class TestReturnEvent(ProbeTestCase):
             assert i.results[0].args == (
                 "unsupported operand type(s) for +: 'NoneType' and 'int'",
             )
+            assert probe.instruments["instrument1"].finish_called
         finally:
             probe.stop()
 
@@ -180,6 +182,7 @@ class TestCallEvent(ProbeTestCase):
             assert probe.instruments["instrument1"].results == [
                 "test_call_event_locals_frame"
             ]
+            assert probe.instruments["instrument1"].finish_called
         finally:
             probe.stop()
 
@@ -198,6 +201,7 @@ class TestEndEvent(ProbeTestCase):
             )
             assert a_func(27) == 40
             assert i.results == [40]
+            assert probe.instruments["instrument1"].finish_called
         finally:
             probe.stop()
 
@@ -215,6 +219,7 @@ class TestEndEvent(ProbeTestCase):
             with self.assertRaises(TypeError):
                 a_func(None)
             assert i.results == [13]
+            assert probe.instruments["instrument1"].finish_called
         finally:
             probe.stop()
 
@@ -238,6 +243,7 @@ class TestEndEvent(ProbeTestCase):
             assert i.results == []
             assert i.expires == i.error_expiration
             assert errs == ["name 'unknown' is not defined"]
+            assert probe.instruments["instrument1"].finish_called
         finally:
             diagnose.manager.handle_error = old_handle_error
             probe.stop()

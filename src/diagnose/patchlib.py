@@ -1,6 +1,7 @@
 import gc
 import mock
 import six
+import sys
 import types
 import weakref
 
@@ -319,3 +320,69 @@ class DictPatch(object):
     def stop(self):
         """Stop an active patch."""
         return self.__exit__()
+
+
+def dotted_import_autocomplete(term):
+    """Return a list of importable objects which match the given term.
+
+    Given "foo.bar.snafu", for example, this tries to import foo,
+    then get foo.bar, then get foo.bar.snafu. If all are reachable,
+    then the returned list contains just the given term.
+
+    If at any point one of the path segments fails to be reachable,
+    then the fully-qualified attributes of its parent are returned,
+    filtered to only those which contain all the letters present in
+    the remainder of the search term. For example, the term "foo.bar"
+    could return ["foo.barium", "foo.rabies""] but not ["foo.bar.rib"],
+    because there is no "a" in "rib". This comparison is case-insensitive.
+
+    If the first segment is not importable, sys.modules is filtered
+    by the remaining letters in the term and returned.
+
+    WARNING: this function imports modules, and touches attributes,
+    which may have undesirable side effects. Do not allow unauthorized
+    users to submit terms.
+    """
+    search_path = term.split(".")
+    found_obj = null = object()
+    found_path = []
+
+    for pos in range(len(search_path)):
+        segment = search_path[pos]
+        try:
+            found_path.append(segment)
+            if found_obj is null:
+                # First segment
+                found_obj = __import__(".".join(found_path))
+            else:
+                try:
+                    found_obj = getattr(found_obj, segment)
+                except AttributeError:
+                    __import__(".".join(found_path))
+                    found_obj = getattr(found_obj, segment)
+        except (TypeError, ValueError, ImportError):
+            # A segment failed to import.
+            found_path.pop()
+            remaining_segments = search_path[pos:]
+            break
+    else:
+        remaining_segments = []
+
+    found_path = ".".join(found_path)
+
+    if found_obj is null:
+        matches = list(sorted({k.split(".", 1)[0] for k in sys.modules}))
+        if remaining_segments:
+            letters = "".join(remaining_segments).lower()
+            matches = [k for k in matches if not letters.strip(k)]
+    elif remaining_segments:
+        matches = dir(found_obj)
+        if remaining_segments:
+            letters = "".join(remaining_segments).lower()
+            matches = [
+                "%s.%s" % (found_path, k) for k in matches if not letters.strip(k)
+            ]
+    else:
+        matches = [found_path]
+
+    return matches
