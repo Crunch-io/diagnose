@@ -86,7 +86,9 @@ class Instrument(object):
         if tag_expr:
             tags = self.evaluate(tag_expr, _globals, _locals)
             if not isinstance(tags, dict):
-                raise TypeError("The 'tags' field must evaluate to a dict, not: %s" % (tags,))
+                raise TypeError(
+                    "The 'tags' field must evaluate to a dict, not: %s" % (tags,)
+                )
         else:
             tags = {}
 
