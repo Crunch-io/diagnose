@@ -264,7 +264,7 @@ class TestHotspotValues(ProbeTestCase):
             )
             assert hard_work(0, 10000) == 1000
             assert [tags for tags, value in i.log] == [
-                ["source:35:    summary = len([x for x in output if x % 10 == 0])\n"]
+                {"source": "35:    summary = len([x for x in output if x % 10 == 0])\n"}
             ]
             assert [type(value) for tags, value in i.log] == [float]
         finally:
@@ -401,5 +401,5 @@ class TestSensors(ProbeTestCase):
             Thing().do("tagless")
             s.custom["tags"] = '{"foo": "bar"}'
             Thing().do("tagged")
-            assert s.log == [([], "<tagless>"), (["foo:bar"], "<tagged>")]
+            assert s.log == [({}, "<tagless>"), ({"foo": "bar"}, "<tagged>")]
         assert probes.active_probes.get("diagnose.test_fixtures.Thing.do") is None
