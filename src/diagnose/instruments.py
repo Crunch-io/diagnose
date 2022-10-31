@@ -82,15 +82,18 @@ class Instrument(object):
         return v
 
     def merge_tags(self, _globals, _locals):
-        tags = self.mgr.get_tags()
         tag_expr = self.custom.get("tags", None)
         if tag_expr:
-            t = self.evaluate(tag_expr, _globals, _locals)
-            if isinstance(t, dict):
-                t = ["%s:%s" % pair for pair in six.iteritems(t)]
-            if not isinstance(t, list):
-                raise TypeError("Cannot send non-list of tags: %s" % (t,))
-            tags = tags + t
+            tags = self.evaluate(tag_expr, _globals, _locals)
+            if not isinstance(tags, dict):
+                raise TypeError(
+                    "The 'tags' field must evaluate to a dict, not: %s" % (tags,)
+                )
+        else:
+            tags = {}
+
+        tags.update(self.mgr.get_tags())
+
         return tags
 
     def fire(self, _globals, _locals):
@@ -176,17 +179,24 @@ class StatsdInstrumentBase(Instrument):
     MAX_CHARS = 2000
 
     def fire(self, _globals, _locals):
-        v = self.evaluate(self.value, _globals, _locals)
-        if v is None:
+        value = self.evaluate(self.value, _globals, _locals)
+        if value is None:
             return
 
-        if not isinstance(v, six.integer_types + (int,)):
-            v = str(v)
-            if len(v) > self.MAX_CHARS:
-                v = v[: self.MAX_CHARS] + "..."
-            raise TypeError("Cannot send non-numeric metric: %s" % (v,))
+        if not isinstance(value, six.integer_types + (int,)):
+            value = str(value)
+            if len(value) > self.MAX_CHARS:
+                value = value[: self.MAX_CHARS] + "..."
+            raise TypeError("Cannot send non-numeric metric: %s" % (value,))
 
-        self.emit(self.name, v, self.merge_tags(_globals, _locals))
+        statsd_tags = sorted(
+            [
+                k if v is None else "%s:%s" % (k, v)
+                for k, v in self.merge_tags(_globals, _locals).items()
+            ]
+        )
+
+        self.emit(self.name, value, statsd_tags)
 
     def emit(self, name, value, tags):
         raise NotImplementedError()

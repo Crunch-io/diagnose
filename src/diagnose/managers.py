@@ -156,7 +156,7 @@ class InstrumentManager(object):
         return True
 
     def get_tags(self):
-        return []
+        return {}
 
     def handle_error(self, probe=None, instrument=None):
         """Handle any error raised by an instrument.

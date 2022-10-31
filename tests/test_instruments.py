@@ -23,7 +23,7 @@ class TestLogInstrument(ProbeTestCase):
             assert result == "<ok>"
 
             # The probe MUST have logged an entry
-            assert out.getvalue() == "Probe (foo)[tags=[]] = 2\n"
+            assert out.getvalue() == "Probe (foo)[tags={}] = 2\n"
 
     def test_log_instrument_err_in_eval(self):
         errs = []
