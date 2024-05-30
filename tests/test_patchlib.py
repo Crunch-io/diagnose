@@ -7,7 +7,6 @@ from collections import defaultdict
 from contextlib import contextmanager
 from unittest import mock
 
-import six
 from diagnose import patchlib, test_fixtures
 from diagnose.test_fixtures import Thing, func_2, funcs, sum4
 
@@ -63,12 +62,7 @@ class TestMakePatches(unittest.TestCase):
                 "diagnose.test_fixtures.Thing.notamethod", self.make_wrapper
             )
 
-        if six.PY2:
-            expected_message = (
-                "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
-            )
-        else:
-            expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
+        expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
 
         assert exc.exception.args[0] == expected_message
 

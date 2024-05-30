@@ -1,15 +1,14 @@
 """Wrappers to monitor function execution."""
 
-from collections import namedtuple
 import datetime
 import functools
 import linecache
 import sys
 import time
 import traceback
+from collections import namedtuple
 
 import hunter
-import six
 
 from diagnose import patchlib
 
@@ -35,7 +34,7 @@ def attach_to(target):
 
 
 def start_all():
-    for probe in six.itervalues(active_probes):
+    for probe in active_probes.values():
         probe.start()
 
 
@@ -88,7 +87,7 @@ class FunctionProbe(object):
 
             hotspots = HotspotsFinder()
             instruments_by_event = {"call": [], "return": [], "end": []}
-            for I in six.itervalues(self.instruments):
+            for I in self.instruments.values():
                 if I.expires and now > I.expires:
                     continue
                 if I.check_call(self, *args, **kwargs):
@@ -234,7 +233,7 @@ class FunctionProbe(object):
                 if tracer is not None:
                     tracer.stop()
 
-                for I in six.itervalues(self.instruments):
+                for I in self.instruments.values():
                     I.finish()
 
         return probe_wrapper
@@ -340,14 +339,10 @@ class HotspotsFinder(object):
         self.__call__(event=None)
 
         if self.calls:
-            worst = max(
-                ((call[2], lineno) for lineno, call in six.iteritems(self.calls))
-            )
+            worst = max(((call[2], lineno) for lineno, call in self.calls.items()))
             self.worst = CallTime(*worst, source=self.source(worst[1]))
 
-            slowest = max(
-                ((call[1], lineno) for lineno, call in six.iteritems(self.calls))
-            )
+            slowest = max(((call[1], lineno) for lineno, call in self.calls.items()))
             self.slowest = CallTime(*slowest, source=self.source(slowest[1]))
         else:
             self.worst = self.slowest = CallTime(None, None, None)

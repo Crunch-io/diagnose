@@ -2,7 +2,6 @@
 
 import datetime
 import sys
-import six
 
 try:
     from statsd import statsd
@@ -12,11 +11,10 @@ except ImportError:
 import diagnose
 from diagnose import probes
 
-
 omitted = object()
 
 
-class Instrument(object):
+class Instrument:
     """An instrument which receives FunctionProbe events.
 
     Attributes:
@@ -183,7 +181,7 @@ class StatsdInstrumentBase(Instrument):
         if value is None:
             return
 
-        if not isinstance(value, six.integer_types + (int,)):
+        if not isinstance(value, int):
             value = str(value)
             if len(value) > self.MAX_CHARS:
                 value = value[: self.MAX_CHARS] + "..."

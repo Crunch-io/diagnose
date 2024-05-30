@@ -4,8 +4,6 @@ import types
 import weakref
 from unittest import mock
 
-import six
-
 omitted = object()
 
 
@@ -40,11 +38,11 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
     which sets `self.func = func` and whose `__call__` method calls `self.func()`,
     because that can be discovered and patched.
     """
-    if isinstance(target, six.string_types):
+    if isinstance(target, str):
         primary_patch = mock.patch(target)
         original, local = primary_patch.get_original()
     elif isinstance(target, tuple) and len(target) == 2:
-        if not isinstance(target[1], six.text_type):
+        if not isinstance(target[1], str):
             raise TypeError(
                 "Targets which are (obj, funcname) 2-tuples MUST pass the funcname as a string."
             )
@@ -172,7 +170,7 @@ def _patch_one(original):
 # ----------------------------- Weak patch ----------------------------- #
 
 
-class WeakMethodPatch(object):
+class WeakMethodPatch:
     """A Patch for an attribute a Python object.
 
     On start/__enter__, calls self.getter() which should return an object,
@@ -277,7 +275,7 @@ class WeakMethodPatch(object):
         return self.__exit__()
 
 
-class DictPatch(object):
+class DictPatch:
     """A Patch for a member of a Python dictionary.
 
     On start/__enter__, replaces the member of the given dictionary

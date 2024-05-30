@@ -1,11 +1,11 @@
 import datetime
 import sys
+from io import StringIO
 from unittest.mock import call, patch
 
 import diagnose
 from diagnose import probes
 from diagnose.test_fixtures import Thing, a_func
-from six.moves import StringIO
 
 from . import ProbeTestCase
 

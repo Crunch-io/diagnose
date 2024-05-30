@@ -2,14 +2,12 @@
 
 import datetime
 import math
-import six
 import sys
 import threading
 import time
 import traceback
 
-from . import instruments
-from . import probes
+from . import instruments, probes
 
 
 def mag(obj, base=10):
@@ -30,7 +28,7 @@ def mag(obj, base=10):
 # --------------------------- Instrument Manager --------------------------- #
 
 
-class InstrumentManager(object):
+class InstrumentManager:
     """A Manager which applies instruments to probes to targets.
 
     specs: a dict of {id: spec} dicts, each of which defines an instrument. Fields:
@@ -72,7 +70,7 @@ class InstrumentManager(object):
 
     def _apply(self):
         seen_instruments = {}
-        for spec_id, doc in six.iteritems(self.specs):
+        for spec_id, doc in self.specs.items():
             full_id = "%s:%s" % (self.short_id, spec_id)
             target = doc["target"]
             seen_instruments[full_id] = target
@@ -219,8 +217,7 @@ class MongoDBInstrumentManager(InstrumentManager):
                     {
                         "$set": {
                             # Oh, Mongo. You and your dots.
-                            "applied.%s"
-                            % self.process_id.replace(".", "_"): newval
+                            "applied.%s" % self.process_id.replace(".", "_"): newval
                         }
                     },
                 )

@@ -6,11 +6,10 @@ from collections import defaultdict
 from unittest.mock import patch
 
 import diagnose
-import six
 from diagnose import patchlib, probes, sensor
 from diagnose.instruments import ProbeTestInstrument
-from diagnose.test_fixtures import Thing, a_func, hard_work, mult_by_8, to_columns
-from six.moves import xrange
+from diagnose.test_fixtures import (Thing, a_func, hard_work, mult_by_8,
+                                    to_columns)
 
 from . import ProbeTestCase
 
@@ -249,7 +248,7 @@ class TestHotspotValues(ProbeTestCase):
             )
             assert hard_work(0, 10000) == 1000
             assert [tags for tags, value in i.log] == [
-                {"source": "35:    summary = len([x for x in output if x % 10 == 0])\n"}
+                {"source": "34:    summary = len([x for x in output if x % 10 == 0])\n"}
             ]
             assert [type(value) for tags, value in i.log] == [float]
         finally:
@@ -260,7 +259,7 @@ class TestHotspotValues(ProbeTestCase):
         # diminishes the more work the target function does.
         # It's low in this test suite because people like fast tests.
         SCALE = 100
-        val = [dict((str(i), i) for i in xrange(100))] * SCALE
+        val = [dict((str(i), i) for i in range(100))] * SCALE
         start = time.time()
         to_columns(val)
         unpatched = time.time() - start
@@ -309,12 +308,7 @@ class TestTargets(ProbeTestCase):
         with self.assertRaises(AttributeError) as exc:
             p.start()
 
-        if six.PY2:
-            expected_message = (
-                "diagnose.test_fixtures.Thing does not have the attribute 'notamethod'"
-            )
-        else:
-            expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
+        expected_message = "<class 'diagnose.test_fixtures.Thing'> does not have the attribute 'notamethod'"
 
         assert exc.exception.args[0] == expected_message
 
