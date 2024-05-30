@@ -106,25 +106,13 @@ def make_patches(target, make_wrapper, patch_all_referrers=True):
         _resolved_target = primary_patch.getter()
         refs = gc.get_referrers(original)
         for ref in refs:
-            # exclude frames
-            if isinstance(ref, types.FrameType):
-                continue
-            # exclude cells,
-            if sys.version_info >= (3, 8):
-                if isinstance(ref, types.CellType):
-                    continue
-                # with python < 3.6 types.CellType is not available
-            elif getattr(type(ref), "__name__", None) == "cell" and hasattr(
-                ref, "cell_contents"
-            ):
-                continue
-
             # with py >= 3.7 the referrer is directly the instance/class object
             # in this case the patching is applied to its __dict__
-            if not isinstance(ref, dict) and hasattr(ref, "__dict__"):
-                ref = ref.__dict__
-            elif not isinstance(ref, dict):
-                continue
+            if not isinstance(ref, dict):
+                if hasattr(ref, "__dict__"):
+                    ref = ref.__dict__
+                else:
+                    continue
 
             names = [k for k, v in ref.items() if v is original]
             seen_names = set()

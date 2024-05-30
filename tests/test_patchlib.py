@@ -16,20 +16,11 @@ registry = {}
 def owner_types(obj):
     num_instances = Counter()
     for ref in gc.get_referrers(obj):
-        if isinstance(ref, types.FrameType):
-            continue
-        if sys.version_info >= (3, 8):
-            if isinstance(ref, types.CellType):
+        if not isinstance(ref, dict):
+            if hasattr(ref, "__dict__"):
+                ref = ref.__dict__
+            else:
                 continue
-        elif getattr(type(ref), "__name__", None) == "cell" and hasattr(
-            ref, "cell_contents"
-        ):
-            continue
-
-        if not isinstance(ref, dict) and hasattr(ref, "__dict__"):
-            ref = ref.__dict__
-        elif not isinstance(ref, dict):
-            continue
 
         for parent in gc.get_referrers(ref):
             if getattr(parent, "__dict__", None) is ref:
