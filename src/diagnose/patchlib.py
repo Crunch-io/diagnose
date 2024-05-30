@@ -1,9 +1,10 @@
 import gc
-import mock
-import six
 import sys
 import types
 import weakref
+from unittest import mock
+
+import six
 
 omitted = object()
 

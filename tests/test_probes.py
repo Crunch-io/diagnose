@@ -3,31 +3,16 @@ import gc
 import sys
 import time
 from collections import defaultdict
-
-import six
-from mock import patch
-from six.moves import xrange
-
-try:
-    from mock import _patch as MockPatch
-except ImportError:
-    import mock
-
-    MockPatch = mock._mock._patch
+from unittest.mock import patch
 
 import diagnose
+import six
 from diagnose import patchlib, probes, sensor
 from diagnose.instruments import ProbeTestInstrument
-from diagnose.test_fixtures import (
-    a_func,
-    hard_work,
-    Thing,
-    to_columns,
-    mult_by_8,
-)
+from diagnose.test_fixtures import Thing, a_func, hard_work, mult_by_8, to_columns
+from six.moves import xrange
 
 from . import ProbeTestCase
-
 
 registry = {}
 

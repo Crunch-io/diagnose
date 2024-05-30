@@ -1,27 +1,15 @@
-from collections import defaultdict
-from contextlib import contextmanager
 import functools
 import gc
 import sys
 import types
 import unittest
+from collections import defaultdict
+from contextlib import contextmanager
+from unittest import mock
 
-try:
-    from mock import _patch as MockPatch
-except ImportError:
-    import mock
-
-    MockPatch = mock._mock._patch
 import six
-
-from diagnose import patchlib
-from diagnose import test_fixtures
-from diagnose.test_fixtures import (
-    func_2,
-    Thing,
-    funcs,
-    sum4,
-)
+from diagnose import patchlib, test_fixtures
+from diagnose.test_fixtures import Thing, func_2, funcs, sum4
 
 registry = {}
 
@@ -153,7 +141,7 @@ class TestMakePatches(unittest.TestCase):
                 Entity: 2,
                 # ...and these are added by attaching the probe:
                 # a) the target that we passed to probes.attach_to()
-                MockPatch: 1,
+                mock._patch: 1,
                 # b) 3 "methods": t.add17, t2.add17, and test_probes.func_2
                 patchlib.WeakMethodPatch: 3,
                 # c) the registry dict.
@@ -169,7 +157,7 @@ class TestMakePatches(unittest.TestCase):
                 types.ModuleType: 2,
                 # The number of Entity references MUST decrease by 1.
                 Entity: 1,
-                MockPatch: 1,
+                mock._patch: 1,
                 # The number of WeakMethodPatch references does not decrease...
                 patchlib.WeakMethodPatch: 3,
                 patchlib.DictPatch: 1,
