@@ -124,10 +124,7 @@ import inspect
 import threading
 import time
 
-import six
-
 from diagnose import patchlib
-
 
 omitted = object()
 
@@ -145,9 +142,7 @@ class Breakpoint:
     is a string (dotted-import path), but only the given reference
     will be patched if `target` is an (object, attribute-name) tuple."""
 
-    def __init__(
-        self, target, event="call", condition=None, timeout=10.0, fire=None,
-    ):
+    def __init__(self, target, event="call", condition=None, timeout=10.0, fire=None):
         """
         target:
             Function to be patched: may be the dotted-import path as a string
@@ -243,7 +238,7 @@ class Breakpoint:
         else:
             patch_all = self.patch_all_referrers
             if patch_all is None:
-                patch_all = isinstance(self.target, six.string_types)
+                patch_all = isinstance(self.target, str)
             self.patches = patchlib.make_patches(
                 self.target, self._make_wrapper, patch_all_referrers=patch_all
             )

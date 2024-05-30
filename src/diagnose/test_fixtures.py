@@ -1,11 +1,10 @@
 import functools
-from six.moves import xrange
 
 import diagnose
 
 
 def wrap(f):
-    class Other(object):
+    class Other:
         def __init__(self, f):
             self.f = f
 
@@ -31,7 +30,7 @@ def func_2(arg):
 
 
 def hard_work(lower, upper):
-    output = xrange(lower, upper)
+    output = range(lower, upper)
     summary = len([x for x in output if x % 10 == 0])
     return summary
 
@@ -49,7 +48,6 @@ def to_columns(rowlist):
 
 
 class Thing:
-
     stage = None
 
     def __init__(self, template="<%s>"):

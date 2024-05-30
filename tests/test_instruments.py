@@ -1,11 +1,12 @@
 import datetime
 import sys
-from mock import call, patch
-from six.moves import StringIO
+from io import StringIO
+from unittest.mock import call, patch
 
 import diagnose
 from diagnose import probes
-from diagnose.test_fixtures import a_func, Thing
+from diagnose.test_fixtures import Thing, a_func
+
 from . import ProbeTestCase
 
 registry = {}
@@ -40,9 +41,7 @@ class TestLogInstrument(ProbeTestCase):
             assert result == "<ok>"
 
             # The manager MUST have handled the error.
-            assert [e.args for e in errs] == [
-                ("invalid syntax", ("<string>", 1, 1, "::len(arg)"))
-            ]
+            assert [str(e) for e in errs] == ["invalid syntax (<string>, line 1)"]
 
 
 class TestHistInstrument(ProbeTestCase):

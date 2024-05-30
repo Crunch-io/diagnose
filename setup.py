@@ -6,8 +6,9 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
+    python_requires=">=3.6",
     name="diagnose",
-    version="4.0.0a5",
+    version="5.0.0",
     author="Robert Brewer",
     author_email="dev@crunch.io",
     description="A library for instrumenting Python code at runtime.",
@@ -17,7 +18,7 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
-    install_requires=["hunter>=2.2.0", "mock", "six"],
     ext_modules=ext_modules,
     entry_points={},
+    install_requires=["hunter>=2.2.0"],
 )
