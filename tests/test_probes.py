@@ -8,8 +8,7 @@ from unittest.mock import patch
 import diagnose
 from diagnose import patchlib, probes, sensor
 from diagnose.instruments import ProbeTestInstrument
-from diagnose.test_fixtures import (Thing, a_func, hard_work, mult_by_8,
-                                    to_columns)
+from diagnose.test_fixtures import Thing, a_func, hard_work, mult_by_8, to_columns
 
 from . import ProbeTestCase
 

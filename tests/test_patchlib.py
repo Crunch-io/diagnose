@@ -3,7 +3,7 @@ import gc
 import sys
 import types
 import unittest
-from collections import defaultdict
+from collections import Counter
 from contextlib import contextmanager
 from unittest import mock
 
@@ -14,8 +14,23 @@ registry = {}
 
 
 def owner_types(obj):
-    num_instances = defaultdict(int)
+    num_instances = Counter()
     for ref in gc.get_referrers(obj):
+        if isinstance(ref, types.FrameType):
+            continue
+        if sys.version_info >= (3, 8):
+            if isinstance(ref, types.CellType):
+                continue
+        elif getattr(type(ref), "__name__", None) == "cell" and hasattr(
+            ref, "cell_contents"
+        ):
+            continue
+
+        if not isinstance(ref, dict) and hasattr(ref, "__dict__"):
+            ref = ref.__dict__
+        elif not isinstance(ref, dict):
+            continue
+
         for parent in gc.get_referrers(ref):
             if getattr(parent, "__dict__", None) is ref:
                 num_instances[type(parent)] += 1
@@ -74,7 +89,7 @@ class TestMakePatches(unittest.TestCase):
         old_probes_func_2 = func_2
         old_local_func_2 = func_2
 
-        class Entity(object):
+        class Entity:
             pass
 
         t = Entity()
