@@ -132,7 +132,7 @@ class InstrumentManager:
         self.period = period
         if self.apply_thread is None:
             self.apply_thread = t = threading.Thread(target=self._cycle)
-            t.setName("diagnose.manager.apply_in_background")
+            t.name = "diagnose.manager.apply_in_background"
             t.daemon = True
             t.start()
 
