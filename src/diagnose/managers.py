@@ -212,7 +212,7 @@ class MongoDBInstrumentManager(InstrumentManager):
             newval = {"lm": doc["lastmodified"], "err": error}
             if doc["applied"].get(self.process_id, {}) != newval:
                 doc["applied"][self.process_id] = newval
-                self.collection.update(
+                self.collection.update_one(
                     {self.id_field: id},
                     {
                         "$set": {
