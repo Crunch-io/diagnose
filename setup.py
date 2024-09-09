@@ -8,7 +8,7 @@ with open("README.md", "r") as fh:
 setup(
     python_requires=">=3.6",
     name="diagnose",
-    version="5.0.0",
+    version="5.0.1",
     author="Robert Brewer",
     author_email="dev@crunch.io",
     description="A library for instrumenting Python code at runtime.",

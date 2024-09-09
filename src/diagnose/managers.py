@@ -132,7 +132,7 @@ class InstrumentManager:
         self.period = period
         if self.apply_thread is None:
             self.apply_thread = t = threading.Thread(target=self._cycle)
-            t.setName("diagnose.manager.apply_in_background")
+            t.name = "diagnose.manager.apply_in_background"
             t.daemon = True
             t.start()
 
@@ -212,7 +212,7 @@ class MongoDBInstrumentManager(InstrumentManager):
             newval = {"lm": doc["lastmodified"], "err": error}
             if doc["applied"].get(self.process_id, {}) != newval:
                 doc["applied"][self.process_id] = newval
-                self.collection.update(
+                self.collection.update_one(
                     {self.id_field: id},
                     {
                         "$set": {
