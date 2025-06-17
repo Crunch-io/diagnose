@@ -248,12 +248,12 @@ class WeakMethodPatch:
 
     def __exit__(self, *exc_info):
         """Undo the patch."""
-        if not hasattr(self, "is_local"):
-            raise RuntimeError("stop called on unstarted patcher")
-
         target = self.getter()
         if target is None:
             return
+
+        if not hasattr(self, "is_local"):
+            raise RuntimeError("stop called on unstarted patcher")
 
         original = self.temp_original()
         if original is None:
